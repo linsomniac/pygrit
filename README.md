@@ -127,7 +127,7 @@ GritError                 (base — also the catch-all for unmapped grit-lib err
 ```
 
 I/O failures surface as `OSError` (with `errno` where available), and the
-originating grit-lib message is preserved via exception chaining (`__cause__`).
+originating grit-lib message is included in the raised exception's message text.
 
 ## Known limitations (v1)
 

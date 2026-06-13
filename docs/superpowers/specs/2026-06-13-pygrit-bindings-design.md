@@ -198,9 +198,11 @@ sequences**; OS paths are a separate concern. The binding therefore:
   - `InvalidObjectError` — malformed id or corrupt/undecodable object.
   - `GritError` — fallback for any unmapped grit-lib error (always reachable).
 - The spike produces an **error-mapping table** covering every exposed operation →
-  exception, preserving the offending path/OID and the source error message
-  (`__cause__`). Use `ValueError` for bad argument types/shapes and `OSError`
-  (with `errno`) for filesystem failures where appropriate.
+  exception, preserving the offending path/OID and the source error message in the
+  raised exception's message text (the grit-lib message is formatted into the
+  exception message, not attached via `__cause__` chaining). Use `ValueError` for
+  bad argument types/shapes and `OSError` (with `errno`) for filesystem failures
+  where appropriate.
 - **Binding code must be panic-free**; `catch_unwind` at the boundary is a
   last-resort backstop that maps to `GritError`, not the primary strategy. Tests
   feed malformed ids and corrupt objects and assert clean exceptions, never aborts.

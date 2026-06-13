@@ -243,7 +243,9 @@ Result<T, Error>`. Suggested mapping to the design §7 exception hierarchy:
 | `Message(String)` | tuple | `GritError` (generic fatal) |
 | _(any future variant)_ | — | **`GritError` catch-all (required by `#[non_exhaustive]`)** |
 
-Preserve the source message and offending path/OID; chain via `__cause__`.
+Preserve the source message and offending path/OID by formatting them into the
+raised exception's message text (the implementation does not use `__cause__`
+chaining).
 
 ---
 
