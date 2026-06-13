@@ -147,8 +147,38 @@ behavior:
 - **`resolve()` on an unknown revision** raises the base `GritError` (grit-lib
   returns a generic "unknown revision or path" message, not a typed not-found
   error).
+- **Reference names are decoded lossily:** grit-lib returns ref names as a UTF-8
+  `String` (via `to_string_lossy`), so non-UTF-8 ref names are *not* byte-faithful —
+  distinct non-UTF-8 names can collide on the U+FFFD replacement character. This is
+  unlike `TreeEntry.name`, which is exact bytes.
 - **Mutating operations are out of scope** for this read-core release: writing
   objects/refs/index, commit creation, merge, and any networking are not exposed.
+
+## Security considerations / untrusted repositories
+
+pygrit is a thin binding over grit-lib 0.4.1 and **inherits its behavior**. It is
+intended for **trusted, local repositories** and is **not hardened against
+adversarial repository content**. The caveats below are upstream characteristics of
+grit-lib 0.4.1 that cannot be fixed in the binding layer; they are candidates for
+future hardening. Do not point pygrit at repositories you do not control without the
+external mitigations noted.
+
+- **No resource limits on object reads (DoS).** grit-lib decompresses loose objects
+  with unbounded reads and preallocates packed-object buffers from attacker-controlled
+  size headers. A maliciously crafted repository (a decompression bomb, or huge
+  declared object sizes) can exhaust memory and abort the host Python process — and an
+  out-of-memory abort **cannot be caught as a Python exception**. Do not read objects
+  from untrusted repositories in-process without external resource limits
+  (`ulimit`/cgroups) or sandboxing.
+- **`Repository.discover()` may change the process working directory.** For
+  repositories with a relative `core.worktree`, grit-lib's discovery can `chdir()` the
+  process (and set `GIT_PREFIX`) and may not restore the CWD on failure. Prefer
+  `Repository.open(git_dir, work_tree)` for untrusted or concurrency-sensitive use, and
+  treat `discover()` on untrusted repositories with caution.
+- **Reference enumeration follows symlinks without containment.** grit-lib's loose-ref
+  walk follows symlinked directories and lacks depth/containment/visited checks, so a
+  crafted repository can make `references()` traverse outside the repository or loop
+  through large trees. Avoid enumerating refs on untrusted repositories.
 
 ## How it maps to grit-lib
 
