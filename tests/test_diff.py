@@ -103,6 +103,132 @@ def test_diff_iter_outlives_repo(diff_repo: Path) -> None:
     assert statuses == ["A", "D", "M"]
 
 
+@pytest.fixture
+def gitlink_repo(tmp_path: Path, git_env: dict[str, str]) -> Path:
+    """A repo whose HEAD vs HEAD^ diff contains a submodule GITLINK (mode 160000) ADD.
+
+    AIDEV-NOTE: A real `git submodule add` needs a clonable URL/network; we instead
+    synthesize a gitlink TREE ENTRY with `git update-index --add --cacheinfo
+    160000,<commit-oid>,sub`, pointing the gitlink at an EXISTING commit oid (the base
+    commit) so the object is present in the odb. The HEAD commit thus has a 160000 `sub`
+    entry referencing a COMMIT object — exactly a submodule pointer — without any network.
+    The diff also modifies a text file so the entry mix mirrors a real submodule bump.
+    """
+    repo = tmp_path / "gitlink"
+    repo.mkdir()
+
+    def g(*a: str) -> bytes:
+        return subprocess.run(
+            ["git", *a],
+            cwd=repo,
+            env=git_env,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+
+    g("init", "-q", "-b", "main")
+    g("config", "core.autocrlf", "false")
+    (repo / "keep").write_text("a\n")
+    g("add", "-A")
+    g("commit", "-q", "-m", "base")
+    base = g("rev-parse", "HEAD").decode().strip()
+    # Modify the text file AND add a gitlink pointing at the base commit oid.
+    (repo / "keep").write_text("a2\n")
+    g("add", "-A")
+    g("update-index", "--add", "--cacheinfo", f"160000,{base},sub")
+    g("commit", "-q", "-m", "add gitlink")
+    return repo
+
+
+def test_diffstat_with_gitlink_matches_git(gitlink_repo: Path) -> None:
+    """`.stats` must not crash on a gitlink entry and must match `git --numstat`.
+
+    AIDEV-NOTE: A gitlink (submodule, mode 160000) references a COMMIT object, not a blob.
+    The binding must NOT line-count the commit object's raw bytes. We oracle against
+    `git --numstat`, which renders a gitlink side as the single line `Subproject commit
+    <oid>` (so an ADD counts 1 insertion / 0 deletions). files_changed counts every entry.
+    """
+    import pygrit
+
+    from tests.gitlib import run_git
+
+    a = run_git(gitlink_repo, "rev-parse", "HEAD^").decode().strip()
+    b = run_git(gitlink_repo, "rev-parse", "HEAD").decode().strip()
+    numstat = (
+        run_git(gitlink_repo, "diff", "--numstat", a, b).decode().strip().splitlines()
+    )
+    ins = dele = files = 0
+    saw_gitlink = False
+    for line in numstat:
+        added, deleted, path = line.split("\t", 2)
+        files += 1
+        if path == "sub":
+            saw_gitlink = True
+        if added != "-":
+            ins += int(added)
+        if deleted != "-":
+            dele += int(deleted)
+    assert saw_gitlink, "fixture must include the gitlink entry in the diff"
+
+    repo = pygrit.Repository.discover(str(gitlink_repo))
+    # Must not crash reading the gitlink commit; stats match git --numstat exactly.
+    stats = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD")).stats
+    assert stats.files_changed == files
+    assert stats.insertions == ins
+    assert stats.deletions == dele
+
+
+def test_diffstat_propagates_read_error(
+    tmp_path: Path, git_env: dict[str, str]
+) -> None:
+    """A missing/corrupt blob must make `.stats` RAISE, not silently return wrong counts.
+
+    AIDEV-NOTE: FIX 4 — read_blob_bytes now propagates ODB read failures instead of
+    swallowing them as empty content. We synthesize a tree that references a NON-EXISTENT
+    blob oid via `git mktree --missing` (which does not verify object existence), then diff
+    the empty tree against it. Reading the missing blob for stats must surface as an error.
+    """
+    import pygrit
+
+    repo = tmp_path / "missrepo"
+    repo.mkdir()
+
+    def g(*a: str, stdin: bytes | None = None) -> bytes:
+        return subprocess.run(
+            ["git", *a],
+            cwd=repo,
+            env=git_env,
+            check=True,
+            input=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout
+
+    g("init", "-q", "-b", "main")
+    bogus = "d" * 40  # a valid-format SHA-1 oid that is NOT in the odb
+    empty_tree = g("mktree", "--missing", stdin=b"").strip().decode()
+    bad_tree = (
+        g(
+            "mktree",
+            "--missing",
+            stdin=f"100644 blob {bogus}\tmissing\n".encode(),
+        )
+        .strip()
+        .decode()
+    )
+
+    pyrepo = pygrit.Repository.discover(str(repo))
+    a = pygrit.ObjectId.from_hex(empty_tree)
+    b = pygrit.ObjectId.from_hex(bad_tree)
+    # The missing-blob read for stats must propagate as an error (not silently empty).
+    # Stats are computed eagerly today, so this raises at diff(); if stats ever go lazy
+    # (FIX 5) it raises at .stats. Either location is acceptable — both are inside the block.
+    with pytest.raises(pygrit.GritError):
+        d = pyrepo.diff(a, b)
+        _ = d.stats
+
+
 @pytest.mark.xfail(
     reason="count_changes splits bare \\r as a line break; git --numstat splits on \\n only",
     strict=False,

@@ -77,6 +77,11 @@ impl DiffEntry {
 // diff. So the binding layer does the numstat-style line counting itself (via
 // grit_lib::diff::count_changes + merge_file::is_binary). `frozen` (immutable).
 //
+// AIDEV-NOTE: ODB read failures during stat computation PROPAGATE (so `.stats` raises rather
+// than reporting silently-wrong counts), and a GITLINK side (submodule commit) is counted as
+// git's single `Subproject commit <oid>` line, NOT by line-counting the commit object's bytes.
+// See compute_diff_stats / read_blob_bytes in src/repository.rs.
+//
 // AIDEV-NOTE: --numstat PARITY LIMITATION. These counts match `git --numstat` for normal
 // `\n`-terminated text, but diverge for files containing a bare `\r` (CR not in a CRLF) as
 // content: `count_changes` (via `similar`) treats `\r` as a line break while git splits on

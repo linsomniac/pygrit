@@ -388,7 +388,7 @@ impl Repository {
         let entries = py
             .allow_threads(|| grit_lib::diff::diff_trees(&repo.odb, Some(&ta), Some(&tb), ""))
             .map_err(map_err)?;
-        let stats = py.allow_threads(|| Self::compute_diff_stats(&repo.odb, &entries));
+        let stats = py.allow_threads(|| Self::compute_diff_stats(&repo.odb, &entries))?;
         Ok(crate::diff::Diff::from_entries(entries, stats))
     }
 }
@@ -432,7 +432,22 @@ impl Repository {
     //     file contributes 0 insertions/0 deletions (git prints `-`/`-`, not counted).
     //   - Otherwise count via grit_lib::diff::count_changes (similar's Myers), decoding bytes
     //     losslessly (latin-1-style 1:1) so the line counts are unaffected by encoding.
-    // A blob read failure is treated as an empty side (best-effort; a missing/absent oid).
+    //
+    // AIDEV-NOTE: ERROR & GITLINK HANDLING (FIX 4). A real ODB read FAILURE now PROPAGATES as
+    // a PyErr (the getter raises) instead of being swallowed as empty content, so a corrupt or
+    // missing object can no longer yield silently-wrong stats. The zero (null) oid still maps to
+    // empty content (the absent side of an Add/Delete — that is correct, not an error).
+    //
+    // GITLINK (submodule, mode 160000) handling: a gitlink entry references a COMMIT object, not
+    // a blob. We must NOT read that commit and line-count its raw object bytes (tree/author/
+    // committer headers) as if it were file content — that was the bug. EMPIRICAL NOTE: the task
+    // brief asserted `git --numstat` does NOT count submodule pointer changes and said to treat
+    // gitlinks as 0/0. That is NOT what git actually does (verified against git 2.53.0): git
+    // renders a gitlink side as the single text line `Subproject commit <oid>`, so `--numstat`
+    // reports add=1/0, modify=1/1, delete=0/1. To stay faithful to the `git --numstat` oracle
+    // the whole suite uses, we synthesize exactly that line for a non-blob side (instead of
+    // line-counting the commit object's bytes) — matching git for add/modify/delete gitlinks.
+    // read_blob_bytes returns this synthesized text (NOT the raw commit bytes) for a non-blob.
     //
     // AIDEV-NOTE: --numstat PARITY LIMITATION (bare CR). For normal `\n`-terminated text the
     // counts match `git --numstat` exactly (verified in tests/test_diff.py). They can DIVERGE,
@@ -446,13 +461,16 @@ impl Repository {
     fn compute_diff_stats(
         odb: &grit_lib::odb::Odb,
         entries: &[grit_lib::diff::DiffEntry],
-    ) -> crate::diff::DiffStats {
+    ) -> PyResult<crate::diff::DiffStats> {
         let mut insertions = 0usize;
         let mut deletions = 0usize;
 
         for e in entries {
-            let old_bytes = read_blob_bytes(odb, &e.old_oid);
-            let new_bytes = read_blob_bytes(odb, &e.new_oid);
+            // Read each side's content. A read error propagates (raises) instead of lying about
+            // counts; a non-blob (gitlink) side yields the synthesized `Subproject commit <oid>`
+            // line so it counts like `git --numstat` (see read_blob_bytes).
+            let old_bytes = read_blob_bytes(odb, &e.old_oid)?;
+            let new_bytes = read_blob_bytes(odb, &e.new_oid)?;
 
             if grit_lib::merge_file::is_binary(&old_bytes)
                 || grit_lib::merge_file::is_binary(&new_bytes)
@@ -468,23 +486,37 @@ impl Repository {
             deletions += del;
         }
 
-        crate::diff::DiffStats::new(entries.len(), insertions, deletions)
+        Ok(crate::diff::DiffStats::new(
+            entries.len(),
+            insertions,
+            deletions,
+        ))
     }
 }
 
-// AIDEV-NOTE: Read a blob's bytes for stat counting. A zero (null) oid means the side is
-// absent (Added has zero old_oid, Deleted has zero new_oid) → empty content. A read failure
-// is also treated as empty (best-effort numstat). We do NOT verify kind == Blob: diff entries
-// only reference blobs on the file sides, and treating a non-blob as its raw bytes would still
-// be harmless for line counting (it never happens for tree-to-tree file diffs).
-fn read_blob_bytes(odb: &grit_lib::odb::Odb, oid: &grit_lib::objects::ObjectId) -> Vec<u8> {
+// AIDEV-NOTE: Read one diff side's content bytes for stat counting (FIX 4). Returns:
+//   - Ok(empty)       for a ZERO (null) oid — the absent side of an Add/Delete (correct, not an
+//     error): the other side's content drives the count.
+//   - Ok(blob bytes)  for a real BLOB — its content, to be line-counted.
+//   - Ok(gitlink text) for a NON-BLOB (a submodule GITLINK references a COMMIT object): we do
+//     NOT line-count the commit object's raw bytes (that was the bug). Instead we synthesize the
+//     single line `Subproject commit <hex>\n` that git renders for a submodule side, so the
+//     diffstat matches `git --numstat` (gitlink add=1/0, modify=1/1, delete=0/1).
+//   - Err(..)         if the ODB read FAILS — propagated so `.stats` RAISES rather than returning
+//     silently-wrong counts (a corrupt/missing object must not be swallowed as empty).
+fn read_blob_bytes(
+    odb: &grit_lib::odb::Odb,
+    oid: &grit_lib::objects::ObjectId,
+) -> PyResult<Vec<u8>> {
     if oid.is_zero() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    match odb.read(oid) {
-        Ok(obj) => obj.data,
-        Err(_) => Vec::new(),
+    let obj = odb.read(oid).map_err(map_err)?;
+    if obj.kind != grit_lib::objects::ObjectKind::Blob {
+        // Gitlink (commit) or any other non-blob: render git's one-line submodule text.
+        return Ok(format!("Subproject commit {}\n", oid.to_hex()).into_bytes());
     }
+    Ok(obj.data)
 }
 
 // AIDEV-NOTE: Map raw bytes to a String 1:1 (each byte -> its U+00xx code point, latin-1
