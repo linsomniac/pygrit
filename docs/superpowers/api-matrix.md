@@ -274,3 +274,59 @@ Verified end-to-end against `git rev-parse HEAD` in `tests/test_smoke.py`.
 | `Object` typed views (`Commit`/`Tree`/`Tag`/`Blob` classes) | binding-layer over `parse_commit`/`parse_tree`/`parse_tag` + raw blob bytes |
 | `revwalk(...)` as lazy iterator | grit-lib `rev_list` is batch (`Vec<ObjectId>`); lazy iteration is binding-layer |
 | `DiffEntry` byte-path fidelity | grit-lib uses `Option<String>` paths — verify non-UTF-8 behavior in Phase 8.5 |
+
+---
+
+## Feature flags (Task 1.8)
+
+grit-lib 0.4.1 declares exactly **two** Cargo features (from `cargo metadata` /
+`cargo tree -e features`):
+
+| Feature | Pulls | Default? | pygrit setting |
+| --- | --- | --- | --- |
+| `http-ureq` | `dep:ureq`, `dep:base64` (HTTP transport client) | **off** | leave **disabled** — networking is out of read-core scope |
+| `test-tools` | (no extra deps; gates internal test helpers) | **off** | leave **disabled** |
+
+- There is **no `default` feature** and **no `transport`/`default` toggle** — the
+  design spec's caution was correct. The crate compiles with **no features enabled**
+  (our `Cargo.toml` requests none), which is exactly the read-core surface we want.
+- Nothing in read-core needs to be feature-gated on; the only thing we could enable
+  (`http-ureq`) we deliberately do not.
+
+## Platform / pkg-config / `-sys` scope (Task 1.8)
+
+- **No C-backed `-sys`/pkg-config dependencies.** Full-graph scan
+  (`cargo tree | grep -iE 'sys|pkg'`) finds only `linux-raw-sys` — a **pure-Rust**
+  crate (raw Linux syscall ABI used by `rustix`), not a C library binding. No
+  `openssl`, `libssh2`, `libgit2`, `zlib-ng`, or system-zlib in the graph.
+- Compression is the **pure-Rust `miniz_oxide`** backend of `flate2`; hashing is the
+  **pure-Rust `sha1`/`sha2`** crates. **`pkg-config` is NOT required.**
+- **Unix-oriented:** grit-lib depends on `libc`, `nix` (features fs/signal/user/poll),
+  and `filetime`. This confirms the design's platform stance: **Linux/Unix first
+  (x86_64 verified here), macOS best-effort, Windows deferred.** The spike built and
+  ran on Linux x86_64; aarch64 should build the same (pure-Rust deps) but is not
+  cross-verified in the spike.
+
+## License (Task 1.8)
+
+| Crate | License (from `cargo metadata`) | Compatible with pygrit MIT? |
+| --- | --- | --- |
+| **grit-lib 0.4.1** | **MIT** | yes — exact match |
+| pyo3 0.23.3 | MIT OR Apache-2.0 | yes |
+| (transitive deps) | permissive (MIT/Apache-2.0/BSD/Unicode) typical | yes |
+
+**Decision point 2 NOT triggered.** grit-lib is MIT, matching pygrit's chosen MIT
+license. No license escalation needed.
+
+## Version-pin decision: Strategy A (Task 1.8)
+
+**Strategy A confirmed and adopted.** The published crates.io crate `grit-lib =0.4.1`
+**fully exposes the read-core API** — discover/open (`Repository::discover`/`::open`),
+odb read/exists (`Odb::read`/`Odb::exists`), HEAD/revision resolution
+(`rev_parse::resolve_revision`), references (`refs::list_refs`/`resolve_ref`), object
+parsing (`parse_commit`/`parse_tree`/`parse_tag`), diff (`diff::diff_trees`), config
+(`ConfigSet`), and SHA-1/SHA-256 oids. The spike read HEAD end-to-end from Python.
+
+**Decision point 1 NOT triggered.** No fallback to a git-revision dependency
+(Strategy B) is needed. We pin the published crate exactly (`grit-lib = "=0.4.1"`)
+with a committed `Cargo.lock` and `--locked` builds.
