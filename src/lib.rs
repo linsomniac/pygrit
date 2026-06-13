@@ -24,6 +24,8 @@ fn _pygrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     error::register(m)?;
     m.add_class::<objects::ObjectId>()?;
     m.add_class::<objects::Object>()?;
+    m.add_class::<objects::Commit>()?;
+    m.add_class::<objects::Signature>()?;
     m.add_class::<odb::Odb>()?;
     m.add_class::<repository::Repository>()?;
     Ok(())

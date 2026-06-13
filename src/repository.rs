@@ -73,4 +73,22 @@ impl Repository {
             repo: Arc::clone(&self.inner),
         }
     }
+
+    // AIDEV-NOTE: Read any object then `parse_commit` over its bytes. A non-commit oid
+    // parses-fail → InvalidObjectError (acceptable: the caller asked for a commit). The
+    // odb read releases the GIL; parse_commit runs under the GIL (it touches Python only
+    // when building Signatures). `oid.inner()` is an owned Copy, so it moves into the
+    // closure with no lifetime tie to `oid`.
+    fn commit(
+        &self,
+        py: Python<'_>,
+        oid: &crate::objects::ObjectId,
+    ) -> PyResult<crate::objects::Commit> {
+        let want = oid.inner();
+        let data = py
+            .allow_threads(|| self.inner.odb.read(&want))
+            .map_err(map_err)?
+            .data;
+        crate::objects::Commit::from_bytes(py, &data)
+    }
 }

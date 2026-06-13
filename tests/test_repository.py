@@ -2,8 +2,6 @@ import os
 
 import pytest
 
-from tests.gitlib import git_text  # noqa: F401  (available if needed)
-
 
 def test_discover_returns_repository(simple_repo):
     import pygrit

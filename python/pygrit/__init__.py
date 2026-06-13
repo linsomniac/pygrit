@@ -3,6 +3,7 @@
 import enum
 
 from pygrit._pygrit import (
+    Commit,
     GritError,
     InvalidObjectError,
     Object,
@@ -11,6 +12,7 @@ from pygrit._pygrit import (
     Odb,
     Repository,
     RepositoryError,
+    Signature,
     _hello,
 )
 
@@ -31,6 +33,7 @@ class ObjectKind(enum.IntEnum):
 
 
 __all__ = [
+    "Commit",
     "GritError",
     "InvalidObjectError",
     "Object",
@@ -40,5 +43,6 @@ __all__ = [
     "Odb",
     "Repository",
     "RepositoryError",
+    "Signature",
     "_hello",
 ]
