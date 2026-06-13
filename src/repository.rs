@@ -191,4 +191,17 @@ impl Repository {
         };
         Ok(crate::refs::Reference::new(Arc::clone(&self.inner), data))
     }
+
+    // AIDEV-NOTE: `resolve_revision` is grit-lib's full rev-parse resolver. `self.inner` is
+    // `Arc<Repository>`, which derefs to `&Repository` for the `&Repository` argument. See
+    // tests/test_resolve.py for which rev-spec forms are supported (and which are xfail'd):
+    // grit-lib 0.4.1 supports "HEAD", full/abbrev hex, ref names + DWIM, `^{tree}`/`^{commit}`
+    // peeling, and `treeish:path`. An unknown bare ref returns Error::Message ("fatal:
+    // ambiguous argument ..."), which maps to the base GritError (see test_resolve_unknown_raises).
+    fn resolve(&self, py: Python<'_>, spec: String) -> PyResult<crate::objects::ObjectId> {
+        let oid = py
+            .allow_threads(|| grit_lib::rev_parse::resolve_revision(&self.inner, &spec))
+            .map_err(map_err)?;
+        Ok(crate::objects::ObjectId::from_inner(oid))
+    }
 }
