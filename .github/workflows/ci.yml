@@ -1,0 +1,114 @@
+# CI for pygrit (PyO3 + maturin abi3 bindings to grit-lib).
+#
+# Three jobs:
+#   lint         — cargo fmt/clippy + ruff format/check (fast gate).
+#   test         — build the extension and run pytest + mypy + stubtest on a
+#                  Python matrix (3.11 = the abi3 floor, 3.13 = current).
+#   build-wheels — build release abi3 wheels per target, verify the abi3 tag,
+#                  install the wheel into a clean venv and import-smoke it, and
+#                  upload the wheels (+ an sdist on the x86_64 leg) as artifacts.
+#
+# Conventions / choices (see also rust-toolchain.toml, pyproject.toml):
+#   * Rust toolchain is pinned to 1.94.1 to match rust-toolchain.toml. We pin
+#     dtolnay/rust-toolchain@1.94.1 directly: the `toolchain:` input is only
+#     honored by the @master ref, NOT by @stable, so the version goes in the ref.
+#   * All cargo/maturin builds use --locked (committed Cargo.lock) for
+#     reproducibility, matching the local `--locked` workflow.
+#   * setup-uv is pinned to the current major (@v8). Dev deps live in
+#     [dependency-groups] (PEP 735), installed via `uv sync --group dev`.
+#   * macOS (macos-14 / Apple-silicon aarch64) is best-effort: grit-lib is
+#     Unix-oriented and the deps are pure-Rust, so it is expected to build, but
+#     fail-fast is disabled so a macOS hiccup does not mask Linux results.
+#   * aarch64 Linux wheels cross-build inside maturin-action's manylinux
+#     container (manylinux: auto) via emulation — no extra QEMU step is needed
+#     for the build, but that leg does not run the wheel import-smoke (it would
+#     require emulating the foreign interpreter); the native legs cover that.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v8
+      - run: uv sync --group dev
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v8
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev
+      - run: uv run maturin develop --uv --locked
+      - run: uv run pytest tests/ -v
+      - run: uv run mypy python tests
+      - run: uv run python -m mypy.stubtest pygrit
+
+  build-wheels:
+    name: build-wheels (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64
+            smoke: true
+          - os: ubuntu-latest
+            target: aarch64
+            smoke: false # cross-built under emulation; foreign interpreter not run here
+          - os: macos-14
+            target: aarch64
+            smoke: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist
+          manylinux: auto
+      - name: list wheels
+        run: ls -la dist
+      - name: verify abi3 tag
+        shell: bash
+        run: ls dist/*.whl | grep -q abi3 && echo "abi3 OK"
+      - name: install wheel into a clean venv and import-smoke
+        if: matrix.smoke
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import pygrit; print(pygrit.Repository); assert 'Repository' in pygrit.__all__"
+      - name: build sdist (one target only)
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64'
+        run: |
+          uvx maturin sdist --out dist || pipx run maturin sdist --out dist || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist
