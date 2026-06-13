@@ -40,3 +40,27 @@ def test_tree_iter_outlives_tree(simple_repo: Path) -> None:
     gc.collect()
     names = {e.name for e in it}
     assert b"a.txt" in names
+
+
+def test_reference_iter_outlives_repository(simple_repo: Path) -> None:
+    import pygrit
+
+    repo = pygrit.Repository.discover(str(simple_repo))
+    it = repo.references()
+    del repo
+    gc.collect()
+    # ReferenceIter owns Arc<Repository> + Arc<[ReferenceData]>; must not crash.
+    names = {r.name for r in it}
+    assert b"refs/heads/main" in names
+
+
+def test_head_reference_peel_outlives_repository(simple_repo: Path) -> None:
+    import pygrit
+
+    head_oid = rev_parse(simple_repo, "HEAD")
+    repo = pygrit.Repository.discover(str(simple_repo))
+    head = repo.head()
+    del repo
+    gc.collect()
+    # peel() of a symbolic HEAD dereferences the Reference's own Arc<Repository>.
+    assert head.peel().hex == head_oid
