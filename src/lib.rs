@@ -40,6 +40,7 @@ fn _pygrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<repository::Repository>()?;
     m.add_class::<diff::Diff>()?;
     m.add_class::<diff::DiffEntry>()?;
+    m.add_class::<diff::DiffStats>()?;
     // AIDEV-NOTE: DiffIter is an internal iterator (like TreeIter/ReferenceIter): registered
     // on the native module but NOT exported in python/pygrit/__init__.py's __all__. Users get
     // one via `iter(diff)`, never by constructing it directly.

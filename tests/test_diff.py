@@ -1,4 +1,4 @@
-"""Diff tests: tree/commit diff status, oracle'd against git."""
+"""Diff tests: tree/commit diff status + diffstat summary, oracle'd against git."""
 
 from __future__ import annotations
 
@@ -62,6 +62,32 @@ def test_diff_len(diff_repo: Path) -> None:
     repo = pygrit.Repository.discover(str(diff_repo))
     d = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD"))
     assert len(d) == 3  # keep modified, gone deleted, added added
+
+
+def test_diffstat_matches_git(diff_repo: Path) -> None:
+    import pygrit
+
+    from tests.gitlib import run_git
+
+    a = run_git(diff_repo, "rev-parse", "HEAD^").decode().strip()
+    b = run_git(diff_repo, "rev-parse", "HEAD").decode().strip()
+    numstat = (
+        run_git(diff_repo, "diff", "--numstat", a, b).decode().strip().splitlines()
+    )
+    ins = dele = 0
+    files = 0
+    for line in numstat:
+        added, deleted, _path = line.split("\t", 2)
+        files += 1
+        if added != "-":
+            ins += int(added)
+        if deleted != "-":
+            dele += int(deleted)
+    repo = pygrit.Repository.discover(str(diff_repo))
+    stats = repo.diff(repo.resolve("HEAD^"), repo.resolve("HEAD")).stats
+    assert stats.files_changed == files
+    assert stats.insertions == ins
+    assert stats.deletions == dele
 
 
 def test_diff_iter_outlives_repo(diff_repo: Path) -> None:

@@ -69,11 +69,71 @@ impl DiffEntry {
     }
 }
 
-/// A parsed tree diff: an iterable, len-able collection of `DiffEntry`.
+// AIDEV-NOTE: DIFFSTAT COMPUTATION. DiffStats is computed EAGERLY at `diff()` time (in
+// src/repository.rs::compute_diff_stats) by re-reading each changed entry's old/new blobs and
+// counting line changes. We do NOT use grit-lib's `diffstat` module: that module only LAYS
+// OUT a `--stat` block (column widths, name truncation, bar scaling) from PRE-COMPUTED
+// per-file insertion/deletion counts (`FileStatInput`); it does not derive counts from a tree
+// diff. So the binding layer does the numstat-style line counting itself (via
+// grit_lib::diff::count_changes + merge_file::is_binary). `frozen` (immutable).
+#[derive(Clone)]
+struct DiffStatsData {
+    files_changed: usize,
+    insertions: usize,
+    deletions: usize,
+}
+
+/// Summary line counts for a `Diff`: files changed, insertions, deletions.
+#[pyclass(frozen, module = "pygrit._pygrit")]
+pub struct DiffStats {
+    data: DiffStatsData,
+}
+
+#[pymethods]
+impl DiffStats {
+    /// Number of files changed (every diff entry, matching `git --numstat` row count).
+    #[getter]
+    fn files_changed(&self) -> usize {
+        self.data.files_changed
+    }
+
+    /// Total inserted lines across all text files (binary files contribute 0).
+    #[getter]
+    fn insertions(&self) -> usize {
+        self.data.insertions
+    }
+
+    /// Total deleted lines across all text files (binary files contribute 0).
+    #[getter]
+    fn deletions(&self) -> usize {
+        self.data.deletions
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "DiffStats(files_changed={}, insertions={}, deletions={})",
+            self.data.files_changed, self.data.insertions, self.data.deletions
+        )
+    }
+}
+
+impl DiffStats {
+    pub fn new(files_changed: usize, insertions: usize, deletions: usize) -> Self {
+        Self {
+            data: DiffStatsData {
+                files_changed,
+                insertions,
+                deletions,
+            },
+        }
+    }
+}
+
+/// A parsed tree diff: an iterable, len-able collection of `DiffEntry` plus `.stats`.
 #[pyclass(module = "pygrit._pygrit")]
 pub struct Diff {
     entries: Arc<[DiffEntryData]>,
-    // 5.2 adds stats fields here.
+    stats: DiffStatsData,
 }
 
 #[pymethods]
@@ -89,12 +149,21 @@ impl Diff {
             idx: 0,
         }
     }
+
+    /// The diffstat summary (`DiffStats`) for this diff.
+    #[getter]
+    fn stats(&self) -> DiffStats {
+        DiffStats {
+            data: self.stats.clone(),
+        }
+    }
 }
 
 impl Diff {
     // AIDEV-NOTE: Map grit's owned Vec<DiffEntry> into our Arc<[DiffEntryData]>. status via
     // `DiffStatus::letter()`; paths via `Option<String>` -> `Option<Vec<u8>>` (into_bytes).
-    pub fn from_entries(entries: Vec<grit_lib::diff::DiffEntry>) -> Self {
+    // The stats are computed separately (in repository.rs, which has the odb) and passed in.
+    pub fn from_entries(entries: Vec<grit_lib::diff::DiffEntry>, stats: DiffStats) -> Self {
         let v: Vec<DiffEntryData> = entries
             .into_iter()
             .map(|e| DiffEntryData {
@@ -107,6 +176,7 @@ impl Diff {
             .collect();
         Self {
             entries: Arc::from(v),
+            stats: stats.data,
         }
     }
 }

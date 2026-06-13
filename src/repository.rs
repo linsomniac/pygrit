@@ -290,7 +290,8 @@ impl Repository {
         let entries = py
             .allow_threads(|| grit_lib::diff::diff_trees(&repo.odb, Some(&ta), Some(&tb), ""))
             .map_err(map_err)?;
-        Ok(crate::diff::Diff::from_entries(entries))
+        let stats = py.allow_threads(|| Self::compute_diff_stats(&repo.odb, &entries));
+        Ok(crate::diff::Diff::from_entries(entries, stats))
     }
 }
 
@@ -321,4 +322,68 @@ impl Repository {
             ))),
         }
     }
+
+    // AIDEV-NOTE: DIFFSTAT COMPUTATION. Compute a `git --numstat`-style summary from a tree
+    // diff. grit-lib's `diffstat` module only LAYS OUT a stat block from pre-computed per-file
+    // insertion/deletion counts — it does NOT derive them from a tree diff. So we re-read each
+    // changed entry's old/new blobs here and count line changes the way Git's `--numstat` does:
+    //   - files_changed = number of diff entries (matching git's per-file row count).
+    //   - For each entry, read the old blob (empty if the old oid is zero/absent → Added) and
+    //     the new blob (empty if absent → Deleted). If EITHER side is binary (contains a NUL,
+    //     per grit_lib::merge_file::is_binary, == Git's heuristic for `--numstat`'s `-`), the
+    //     file contributes 0 insertions/0 deletions (git prints `-`/`-`, not counted).
+    //   - Otherwise count via grit_lib::diff::count_changes (similar's Myers, == Git's default
+    //     diff algorithm for `--numstat`), decoding bytes losslessly (latin-1-style 1:1) so the
+    //     line counts are unaffected by encoding.
+    // A blob read failure is treated as an empty side (best-effort; a missing/absent oid).
+    fn compute_diff_stats(
+        odb: &grit_lib::odb::Odb,
+        entries: &[grit_lib::diff::DiffEntry],
+    ) -> crate::diff::DiffStats {
+        let mut insertions = 0usize;
+        let mut deletions = 0usize;
+
+        for e in entries {
+            let old_bytes = read_blob_bytes(odb, &e.old_oid);
+            let new_bytes = read_blob_bytes(odb, &e.new_oid);
+
+            if grit_lib::merge_file::is_binary(&old_bytes)
+                || grit_lib::merge_file::is_binary(&new_bytes)
+            {
+                // Binary file: git --numstat prints `-`/`-`; not counted as line changes.
+                continue;
+            }
+
+            let old_text = bytes_to_lossy_string(&old_bytes);
+            let new_text = bytes_to_lossy_string(&new_bytes);
+            let (ins, del) = grit_lib::diff::count_changes(&old_text, &new_text);
+            insertions += ins;
+            deletions += del;
+        }
+
+        crate::diff::DiffStats::new(entries.len(), insertions, deletions)
+    }
+}
+
+// AIDEV-NOTE: Read a blob's bytes for stat counting. A zero (null) oid means the side is
+// absent (Added has zero old_oid, Deleted has zero new_oid) → empty content. A read failure
+// is also treated as empty (best-effort numstat). We do NOT verify kind == Blob: diff entries
+// only reference blobs on the file sides, and treating a non-blob as its raw bytes would still
+// be harmless for line counting (it never happens for tree-to-tree file diffs).
+fn read_blob_bytes(odb: &grit_lib::odb::Odb, oid: &grit_lib::objects::ObjectId) -> Vec<u8> {
+    if oid.is_zero() {
+        return Vec::new();
+    }
+    match odb.read(oid) {
+        Ok(obj) => obj.data,
+        Err(_) => Vec::new(),
+    }
+}
+
+// AIDEV-NOTE: Map raw bytes to a String 1:1 (each byte -> its U+00xx code point, latin-1
+// style). This is lossless and order/line-count preserving, so `count_changes` (which diffs
+// `&str` lines split on '\n' == 0x0A) yields the same insertion/deletion counts as operating
+// on the raw bytes. We do this only AFTER the binary check, so text files are well-behaved.
+fn bytes_to_lossy_string(data: &[u8]) -> String {
+    data.iter().map(|&b| b as char).collect()
 }
