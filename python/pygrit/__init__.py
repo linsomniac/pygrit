@@ -7,6 +7,7 @@ from pygrit._pygrit import (
     InvalidObjectError,
     ObjectId,
     ObjectNotFoundError,
+    Repository,
     RepositoryError,
     _hello,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "ObjectId",
     "ObjectKind",
     "ObjectNotFoundError",
+    "Repository",
     "RepositoryError",
     "_hello",
 ]
