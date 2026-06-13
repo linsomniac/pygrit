@@ -30,6 +30,20 @@ def test_discover_accepts_bytes_path(simple_repo):
     assert repo.work_tree == os.fsencode(simple_repo)
 
 
+def test_discover_accepts_pathlike_returning_bytes(simple_repo):
+    import pygrit
+
+    # AIDEV-NOTE: design §5 — path inputs accept os.PathLike whose __fspath__ returns
+    # bytes (not just str). PyO3's PathBuf extractor rejects bytes from __fspath__, so
+    # extract_path falls back to os.fspath() and handles a bytes result via OsString.
+    class _BytesPath:
+        def __fspath__(self):
+            return os.fsencode(str(simple_repo))
+
+    repo = pygrit.Repository.discover(_BytesPath())
+    assert repo.git_dir == os.fsencode(simple_repo / ".git")
+
+
 def test_discover_rejects_invalid_path_type():
     import pygrit
 

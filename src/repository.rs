@@ -7,26 +7,54 @@ use pyo3::types::PyBytes;
 
 use crate::error::map_err;
 
-// AIDEV-NOTE: Accept str | bytes | os.PathLike path inputs (design §5). On Unix,
-// bytes map to an OsString 1:1 (exact non-UTF-8 path fidelity); str/os.PathLike go
-// through PyO3's PathBuf extractor (surrogateescape via fsdecode). We try the
-// PathBuf extractor first so os.PathLike (and str) take the standard path, and fall
-// back to raw bytes only for `bytes` inputs. This touches Python, so callers MUST
-// run it BEFORE releasing the GIL with allow_threads.
+// AIDEV-NOTE: Accept str | bytes | os.PathLike[str] | os.PathLike[bytes] path inputs
+// (design §5). On Unix, bytes map to an OsString 1:1 (exact non-UTF-8 path fidelity);
+// str/os.PathLike[str] go through PyO3's PathBuf extractor (surrogateescape via fsdecode).
+// We try the PathBuf extractor first so os.PathLike[str] (and str) take the standard path,
+// then a raw `bytes` input, and FINALLY fall back to calling `os.fspath(obj)` ourselves to
+// support an os.PathLike whose `__fspath__()` returns `bytes` (PyO3's PathBuf extractor
+// calls os.fspath but then requires the result be str, so a bytes __fspath__ is rejected
+// upstream). The os.fspath() result is then handled: str -> PathBuf, bytes -> OsString.
+// This touches Python, so callers MUST run it BEFORE releasing the GIL with allow_threads.
 fn extract_path(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
     if let Ok(p) = obj.extract::<std::path::PathBuf>() {
         return Ok(p);
     }
-    if let Ok(b) = obj.extract::<Vec<u8>>() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStringExt;
-            return Ok(std::path::PathBuf::from(std::ffi::OsString::from_vec(b)));
+    if let Ok(p) = bytes_to_pathbuf(obj) {
+        return Ok(p);
+    }
+    // Fall back to os.fspath() to handle os.PathLike whose __fspath__ returns bytes (or str).
+    let py = obj.py();
+    if let Ok(fspath) = py.import("os")?.call_method1("fspath", (obj,)) {
+        if let Ok(p) = fspath.extract::<std::path::PathBuf>() {
+            return Ok(p);
+        }
+        if let Ok(p) = bytes_to_pathbuf(&fspath) {
+            return Ok(p);
         }
     }
     Err(pyo3::exceptions::PyTypeError::new_err(
         "path must be str, bytes, or os.PathLike",
     ))
+}
+
+// AIDEV-NOTE: Map a Python `bytes` object to a PathBuf via OsString (Unix: bytes 1:1).
+// Returns Err if `obj` is not extractable as Vec<u8> (so callers can chain fallbacks).
+// On non-Unix there is no lossless bytes->path mapping, so this always errors there.
+fn bytes_to_pathbuf(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
+    let b = obj.extract::<Vec<u8>>()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        Ok(std::path::PathBuf::from(std::ffi::OsString::from_vec(b)))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = b;
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "bytes paths are only supported on Unix",
+        ))
+    }
 }
 
 // AIDEV-NOTE: We hold an `Arc<grit_lib::repo::Repository>` so the `.odb` accessor can
