@@ -1,0 +1,251 @@
+# Trusted-publishing release pipeline for pygrit (PyO3 + maturin abi3 bindings).
+#
+# Separate from ci.yml so the OIDC `id-token: write` permission never lives in the
+# everyday push/PR workflow. Flow:
+#   version-guard  — (release only) tag must be vX.Y.Z and equal the crate version.
+#   build          — 3 targets (linux x86_64/aarch64, macOS arm64): build the abi3
+#                    wheel, assert exactly one cp311-abi3 wheel, import-smoke it
+#                    (native on x86_64/macOS; emulated arm64 via QEMU), upload.
+#   sdist          — build the sdist with the locked maturin, source-compile +
+#                    import-smoke it, upload.
+#   publish-pypi   — (release) provenance + inventory gate, then OIDC publish to PyPI.
+#   publish-testpypi (workflow_dispatch) — same gate, OIDC publish to TestPyPI.
+#
+# Conventions (match ci.yml): pinned Rust 1.94.1, --locked builds, setup-uv@v8.2.0
+# (no floating major exists), checkout@v6 / upload-artifact@v7 / download-artifact@v7
+# (node24, v4+ backend). Only the publish action is commit-SHA-pinned (it handles
+# the OIDC credential / upload); other actions follow ci.yml's floating-major style.
+
+name: Release
+
+on:
+  release:
+    types: [published]      # -> real PyPI
+  workflow_dispatch: {}     # -> TestPyPI dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false   # never cancel a partially-completed publish
+
+jobs:
+  version-guard:
+    name: version guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - name: Assert tag matches crate version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          # v1 policy: final releases only, vX.Y.Z (no PEP 440 prereleases — see spec).
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag '$tag' is not of the form vX.Y.Z (final releases only)."
+            exit 1
+          fi
+          tag_version="${tag#v}"
+          crate_version="$(cargo metadata --locked --format-version=1 \
+            | python3 -c "import json,sys; print([p['version'] for p in json.load(sys.stdin)['packages'] if p['name']=='pygrit'][0])")"
+          echo "tag=$tag_version crate=$crate_version"
+          if [[ "$tag_version" != "$crate_version" ]]; then
+            echo "::error::Tag version ($tag_version) != crate version ($crate_version). Bump Cargo.toml AND Cargo.lock."
+            exit 1
+          fi
+          echo "version-guard OK: $tag_version"
+
+  build:
+    name: build (${{ matrix.os }} ${{ matrix.target }})
+    needs: [version-guard]
+    # version-guard is skipped on workflow_dispatch (its own `if`); allow build to
+    # run when the guard either succeeded (release) or was skipped (dispatch), but
+    # not when it actually failed.
+    if: always() && (needs.version-guard.result == 'success' || needs.version-guard.result == 'skipped')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64
+            smoke: native
+          - os: ubuntu-latest
+            target: aarch64
+            smoke: emulated
+          - os: macos-14
+            target: aarch64
+            smoke: native
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --locked --out dist
+          # Pin manylinux_2_17 for the broadest-compatible Linux tag on RELEASED
+          # wheels (ci.yml uses `auto` = newer glibc, fine for dev — intentional
+          # divergence). Ignored on the macOS leg (manylinux is Linux-only).
+          manylinux: "2014"
+      - name: Verify exactly one cp311-abi3 wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*-cp311-abi3-*.whl)
+          if [[ ${#wheels[@]} -ne 1 ]]; then
+            echo "::error::expected exactly one *-cp311-abi3-*.whl, found ${#wheels[@]}: ${wheels[*]:-<none>}"
+            ls -la dist || true
+            exit 1
+          fi
+          echo "abi3 wheel OK: ${wheels[0]}"
+      - name: Set up Python 3.11 for native smoke
+        if: matrix.smoke == 'native'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Import smoke (native, Python 3.11)
+        if: matrix.smoke == 'native'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*-cp311-abi3-*.whl
+          /tmp/smoke/bin/python -c "import pygrit; pygrit.Repository"
+          /tmp/smoke/bin/python -c "import pygrit, os; p=os.path.dirname(pygrit.__file__); assert 'site-packages' in p, p; print('imported from', p)"
+      - name: Set up QEMU for emulated arm64 smoke
+        if: matrix.smoke == 'emulated'
+        uses: docker/setup-qemu-action@v3
+      - name: Import smoke (emulated aarch64, Python 3.11 container)
+        if: matrix.smoke == 'emulated'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          wheel="$(ls dist/*-cp311-abi3-*.whl)"
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD/dist:/dist:ro" python:3.11-slim \
+            bash -c "pip install /dist/$(basename "$wheel") && python -c 'import pygrit; pygrit.Repository'"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist
+          if-no-files-found: error
+
+  sdist:
+    name: sdist
+    needs: [version-guard]
+    if: always() && (needs.version-guard.result == 'success' || needs.version-guard.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - uses: astral-sh/setup-uv@v8.2.0
+      - run: uv sync --group dev
+      # `uv run maturin` uses the maturin pinned in uv.lock (reproducible release
+      # builds), NOT a floating `uvx maturin` as in ci.yml's smoke step — deliberate.
+      - name: Build sdist (locked maturin)
+        run: uv run maturin sdist --out dist
+      - name: Source-compile + import-smoke the sdist
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m venv /tmp/sdisttest
+          /tmp/sdisttest/bin/python -m pip install --upgrade pip
+          /tmp/sdisttest/bin/pip install dist/pygrit-*.tar.gz
+          /tmp/sdisttest/bin/python -c "import pygrit; pygrit.Repository"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist
+          if-no-files-found: error
+
+  publish-pypi:
+    name: publish to PyPI
+    needs: [build, sdist]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Provenance — built commit must be an ancestor of origin/main
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This repo's default branch is `main`; update both publish jobs if renamed.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::commit $GITHUB_SHA is not an ancestor of origin/main; refusing to publish."
+            exit 1
+          fi
+          echo "provenance OK: $GITHUB_SHA is on origin/main"
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: "*"
+          merge-multiple: true
+          path: dist
+      - name: Inventory — exactly 3 wheels + 1 sdist, single version
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la dist
+          python3 .github/scripts/check_release_inventory.py dist
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
+        with:
+          packages-dir: dist
+
+  publish-testpypi:
+    name: publish to TestPyPI
+    needs: [build, sdist]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Provenance — built commit must be an ancestor of origin/main
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This repo's default branch is `main`; update both publish jobs if renamed.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::commit $GITHUB_SHA is not an ancestor of origin/main; refusing to publish."
+            exit 1
+          fi
+          echo "provenance OK: $GITHUB_SHA is on origin/main"
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: "*"
+          merge-multiple: true
+          path: dist
+      - name: Inventory — exactly 3 wheels + 1 sdist, single version
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la dist
+          python3 .github/scripts/check_release_inventory.py dist
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # v1.14.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
