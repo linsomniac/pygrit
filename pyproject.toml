@@ -16,6 +16,11 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.urls]
+Homepage = "https://github.com/linsomniac/pygrit"
+Repository = "https://github.com/linsomniac/pygrit"
+Issues = "https://github.com/linsomniac/pygrit/issues"
+
 [tool.maturin]
 module-name = "pygrit._pygrit"
 python-source = "python"

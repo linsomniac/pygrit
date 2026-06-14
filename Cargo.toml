@@ -3,6 +3,10 @@ name = "pygrit"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+description = "Python bindings for grit-lib (a Rust reimplementation of Git)"
+repository = "https://github.com/linsomniac/pygrit"
+homepage = "https://github.com/linsomniac/pygrit"
+documentation = "https://github.com/linsomniac/pygrit"
 publish = false
 
 [lib]
