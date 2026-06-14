@@ -201,6 +201,61 @@ so no git-revision fallback is used).
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.1.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | read-core release |
 
+## Releasing
+
+pygrit publishes to PyPI via [trusted publishing](https://docs.pypi.org/trusted-publishers/)
+(OpenID Connect) — no API tokens are stored in the repo. Publishing a GitHub Release
+runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which rebuilds
+the wheels + sdist with the same build recipe CI uses (released Linux wheels target the
+broader `manylinux_2_17` tag), re-smoke-tests every artifact, checks the tag and
+provenance, and uploads to PyPI over OIDC.
+
+### One-time setup (maintainer, manual)
+
+These cannot be automated and must be done once before the first release:
+
+1. **Register the PyPI "pending publisher"** at
+   <https://pypi.org/manage/account/publishing/>:
+   - PyPI Project Name: `pygrit`
+   - Owner: `linsomniac`
+   - Repository name: `pygrit`
+   - Workflow name: `release.yml`
+   - Environment name: `pypi`
+
+   For the dry-run path, repeat at <https://test.pypi.org/manage/account/publishing/>
+   with Environment name `testpypi`. A pending publisher does **not** reserve the
+   name, so cut the first real release promptly to claim `pygrit`.
+
+2. **Create the protected GitHub Environments** (Settings → Environments). GitHub
+   silently auto-creates an *unprotected* environment if a workflow merely
+   references one, so create them explicitly:
+   - `pypi` — restrict deployments to protected `v*` tags (back it with a repository
+     ruleset that protects `v*` tags). Required-reviewer protection is impractical
+     for a solo maintainer (self-review is blocked); add a reviewer if the project
+     gains maintainers.
+   - `testpypi` — restrict deployments to the `main` branch.
+
+### Cutting a release
+
+1. Bump the version in **both** `Cargo.toml` (`[package] version`) **and**
+   `Cargo.lock`: edit `Cargo.toml`, then run `cargo update -p pygrit` (or `cargo
+   build` without `--locked`) so the lockfile matches. The workflow's `cargo
+   metadata --locked` version guard fails if `Cargo.lock` is stale.
+2. Commit to `main` and push.
+3. Create a GitHub Release with tag **`vX.Y.Z`** (final releases only — the version
+   guard rejects anything that is not `vX.Y.Z`). Publishing the release builds and
+   smoke-tests the three wheels + sdist, verifies `tag == crate version` and that the
+   commit is on `main`, and publishes to PyPI automatically.
+
+### TestPyPI dry-run (optional)
+
+Trigger the workflow manually (Actions → Release → "Run workflow") to build and
+publish to **TestPyPI** instead of PyPI. Because PyPI/TestPyPI filenames are
+immutable, a repeat dry-run needs a **unique version** (bump the patch). A green
+dry-run validates the build/smoke/OIDC *mechanics*, but TestPyPI uses a separate
+trusted-publisher registration, so it does **not** prove the real-PyPI config — the
+first live release does.
+
 ## License
 
 MIT — matching grit-lib (also MIT). See [`LICENSE`](LICENSE) if present, and the
