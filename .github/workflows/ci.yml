@@ -5,8 +5,9 @@
 #   test         — build the extension and run pytest + mypy + stubtest on a
 #                  Python matrix (3.11 = the abi3 floor, 3.13 = current).
 #   build-wheels — build release abi3 wheels per target, verify the abi3 tag,
-#                  install the wheel into a clean venv and import-smoke it, and
-#                  upload the wheels (+ an sdist on the x86_64 leg) as artifacts.
+#                  install the wheel into a clean venv and run the FULL suite +
+#                  stubtest against the INSTALLED package, build+install+smoke the
+#                  sdist (fail hard), and upload the artifacts.
 #
 # Conventions / choices (see also rust-toolchain.toml, pyproject.toml):
 #   * Rust toolchain is pinned to 1.94.1 to match rust-toolchain.toml. We pin
@@ -21,8 +22,19 @@
 #     fail-fast is disabled so a macOS hiccup does not mask Linux results.
 #   * aarch64 Linux wheels cross-build inside maturin-action's manylinux
 #     container (manylinux: auto) via emulation — no extra QEMU step is needed
-#     for the build, but that leg does not run the wheel import-smoke (it would
-#     require emulating the foreign interpreter); the native legs cover that.
+#     for the build, but that leg does not run the installed-wheel test suite or
+#     the sdist compile (both would require emulating the foreign interpreter /
+#     toolchain); the native legs (linux x86_64, macОS) cover that.
+#   * The native legs install the built wheel into a CLEAN venv and run the real
+#     pytest suite + stubtest against the INSTALLED package — exercising the
+#     shipped wheel, not the source tree. The source `python/pygrit` is kept off
+#     sys.path by running from a temp dir that contains only tests/ + conftest +
+#     the pyproject pytest config (pyproject's pythonpath=["."] then points at a
+#     dir with no source pygrit, so the installed wheel is the only importable
+#     copy). These steps fail the job on any test failure.
+#   * The sdist is built, installed into a clean venv (which compiles from source
+#     via the pinned Rust toolchain), and import-smoked — no `|| true`, so a
+#     broken sdist fails the job.
 
 name: CI
 
@@ -95,19 +107,41 @@ jobs:
       - name: verify abi3 tag
         shell: bash
         run: ls dist/*.whl | grep -q abi3 && echo "abi3 OK"
-      - name: install wheel into a clean venv and import-smoke
+      - name: test the INSTALLED wheel (clean venv, full suite + stubtest)
         if: matrix.smoke
         shell: bash
         run: |
           set -euxo pipefail
-          python3 -m venv /tmp/smoke
-          /tmp/smoke/bin/python -m pip install --upgrade pip
-          /tmp/smoke/bin/pip install dist/*.whl
-          /tmp/smoke/bin/python -c "import pygrit; print(pygrit.Repository); assert 'Repository' in pygrit.__all__"
-      - name: build sdist (one target only)
+          # Clean venv: only the built wheel + test deps. git is preinstalled on
+          # GitHub runners (the suite shells out to it via tests/conftest.py).
+          python3 -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/python -m pip install --upgrade pip
+          /tmp/wheeltest/bin/pip install dist/*.whl pytest mypy
+          # Stage ONLY tests/ + the pyproject pytest config in an empty dir, so the
+          # source `python/pygrit` is NOT importable. pyproject's pythonpath=["."]
+          # then resolves to this dir (no source pygrit), making the installed wheel
+          # the only `import pygrit`.
+          workdir="$(mktemp -d)"
+          cp -r tests "$workdir/"
+          cp pyproject.toml "$workdir/"
+          cd "$workdir"
+          # Prove the import comes from the installed wheel, not a source tree.
+          /tmp/wheeltest/bin/python -c "import pygrit, os; p = os.path.dirname(pygrit.__file__); print('pygrit from:', p); assert 'site-packages' in p, p"
+          /tmp/wheeltest/bin/python -m pytest tests/ -q
+          /tmp/wheeltest/bin/python -m mypy.stubtest pygrit
+      - name: build + install + smoke the sdist (fail hard)
         if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64'
+        shell: bash
         run: |
-          uvx maturin sdist --out dist || pipx run maturin sdist --out dist || true
+          set -euxo pipefail
+          # Build the sdist into dist/ (no `|| true` — a failure must fail the job).
+          uvx maturin sdist --out dist
+          # Install the sdist into a clean venv: this COMPILES from source, using
+          # the Rust toolchain set up for this job.
+          python3 -m venv /tmp/sdisttest
+          /tmp/sdisttest/bin/python -m pip install --upgrade pip
+          /tmp/sdisttest/bin/pip install dist/pygrit-*.tar.gz
+          /tmp/sdisttest/bin/python -c "import pygrit; pygrit.Repository"
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
