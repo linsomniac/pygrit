@@ -80,3 +80,57 @@ def test_write_tree_matches_git(tmp_path, git_env):
         stdout=subprocess.PIPE, check=True,
     ).stdout.decode().strip()
     assert tree.hex == git_tree
+
+
+def test_stage_real_file_matches_git(tmp_path, git_env):
+    import pylibgrit
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _init(repo, git_env)
+    (repo / "a.txt").write_text("hello\n")
+
+    pg = pylibgrit.Repository.open(str(repo / ".git"), str(repo))
+    idx = pg.index()
+    idx.stage(b"a.txt")
+    idx.write()
+    tree = idx.write_tree()
+
+    subprocess.run(["git", "add", "a.txt"], cwd=repo, env=git_env, check=True)
+    git_tree = subprocess.run(
+        ["git", "write-tree"], cwd=repo, env=git_env,
+        stdout=subprocess.PIPE, check=True,
+    ).stdout.decode().strip()
+    assert tree.hex == git_tree
+
+
+def test_stage_executable_bit(tmp_path, git_env):
+    import os
+    import pylibgrit
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _init(repo, git_env)
+    script = repo / "run.sh"
+    script.write_text("#!/bin/sh\n")
+    os.chmod(script, 0o755)
+
+    pg = pylibgrit.Repository.open(str(repo / ".git"), str(repo))
+    idx = pg.index()
+    idx.stage(b"run.sh")
+    idx.write()
+
+    staged = _ls_files_stage(repo, git_env)
+    assert staged.startswith("100755 ")
+
+
+def test_stage_bare_repo_raises(tmp_path, git_env):
+    import pylibgrit
+    import pytest
+
+    repo = tmp_path / "r.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(repo)], env=git_env, check=True)
+    pg = pylibgrit.Repository.open(str(repo))
+    idx = pg.index()
+    with pytest.raises(pylibgrit.RepositoryError):
+        idx.stage(b"a.txt")
