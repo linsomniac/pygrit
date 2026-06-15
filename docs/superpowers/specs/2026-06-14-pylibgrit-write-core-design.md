@@ -53,7 +53,7 @@ These five decisions were settled during brainstorming and are binding for the p
 | **Index API** | High-level `add`/`stage`/`remove`/`write`/`write_tree` **and** a constructable raw `IndexEntry` (`add_entry`). | Convenience for the common synthetic-commit path plus full 15-field fidelity for power users. |
 | **Identity** | Constructable `Signature(name, email, when)` for the common case **and** a raw `author_raw`/`committer_raw`/`tagger_raw` byte escape-hatch on the create-* builders. | Symmetric with the read-side `Signature`; the raw bytes guarantee byte-identical OIDs for unusual identities. |
 | **Reflog** | Opt-in: a reflog entry is appended only when `message=` (and `signer=`) is passed to a ref op; a standalone `append_reflog()` is also exposed. | Honest to grit-lib plumbing (`write_ref` does not auto-log); no hidden config reads or identity lookups. |
-| **Ref safety** | Default overwrite (plumbing-faithful) **and** an opt-in `expected_old=` compare-and-swap: an `ObjectId` requires a match, `None` means create-only (must not exist). | Race-aware and create-only semantics when wanted, without paternalism; mirrors `git update-ref <ref> <new> <old>`. See the best-effort caveat in §6. |
+| **Ref safety** | Default overwrite (plumbing-faithful), opt-in `expected_old=<oid>` compare-and-swap, and a `create=True` flag for create-only. | Race-aware and create-only semantics when wanted, without paternalism; mirrors `git update-ref <ref> <new> <old>`. See the best-effort caveat in §6. |
 
 ## 1. Architecture & module layout
 
@@ -138,11 +138,12 @@ class Repository:
         # tagger_raw. Pointing refs/tags/<name> at it is a separate update_ref call.
 
     def update_ref(self, name: bytes, target: ObjectId, *,
-                   expected_old: ObjectId | None = ...,   # default sentinel=overwrite; None=create-only; oid=CAS
+                   expected_old: ObjectId | None = None,  # None=overwrite; oid=compare-and-swap
+                   create: bool = False,                  # True=create-only (must not already exist)
                    message: bytes | None = None, signer: Signature | None = None) -> None: ...
 
     def delete_ref(self, name: bytes, *,
-                   expected_old: ObjectId = ...,   # default sentinel=delete unconditionally; oid=CAS-delete
+                   expected_old: ObjectId | None = None,  # None=delete unconditionally; oid=CAS-delete
                    message: bytes | None = None, signer: Signature | None = None) -> None: ...
 
     def set_head(self, target: bytes) -> None: ...               # symbolic HEAD -> b"refs/heads/main"
@@ -151,12 +152,15 @@ class Repository:
                       signer: Signature, message: bytes, force_create: bool = False) -> None: ...
 ```
 
-`UNSET` is a module-level sentinel (`pylibgrit.UNSET`) exported from `__init__.py`, so
-`expected_old=None` means "must not exist" distinctly from the default ("don't check").
-In the stub the default is written `...` per typing convention; the runtime default is
-this `UNSET` sentinel, and the native methods branch on it. (For `delete_ref`,
-`expected_old=oid` means delete only if it still points there; `None` is not meaningful
-and raises `ValueError`.)
+`update_ref` expresses three states with two plain parameters (a native PyO3 method
+cannot distinguish an omitted argument from an explicit `None`, and the strict
+`stubtest` gate forbids a custom sentinel default): `expected_old=<oid>` is
+compare-and-swap (write only if the ref currently equals `oid`), `create=True` is
+create-only (fail if the ref already exists), and the default
+(`expected_old=None, create=False`) overwrites. Passing both `create=True` and
+`expected_old=<oid>` raises `ValueError`. `delete_ref` needs only two states: the default
+deletes unconditionally, and `expected_old=<oid>` deletes only if the ref still points
+there.
 
 ### grit-lib primitives each method wraps
 
@@ -171,7 +175,7 @@ and raises `ValueError`.)
 | `Index.write_tree` | `write_tree::write_tree_from_index(odb, index, "")` |
 | `create_commit` | build `CommitData { tree, parents, author, committer, author_raw, committer_raw, encoding, message, raw_message }` → `objects::serialize_commit` → `Odb::write(Commit, raw)` |
 | `create_tag` | build `TagData` → `objects::serialize_tag` → `Odb::write(Tag, raw)` |
-| `update_ref` / `delete_ref` | `refs::write_ref` / `refs::delete_ref` (preceded by the binding-layer CAS read-compare when `expected_old` is set) |
+| `update_ref` / `delete_ref` | `refs::write_ref` / `refs::delete_ref` (preceded by a binding-layer read-compare when `expected_old`/`create` is set) |
 | `set_head` / `set_symbolic_ref` | `refs::write_symbolic_ref(git_dir, "HEAD"|name, target)` |
 | `append_reflog` | `refs::append_reflog(git_dir, refname, old, new, identity, message, force_create)` |
 
@@ -188,7 +192,7 @@ sig  = pylibgrit.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
 commit = repo.create_commit(tree, parents=[], author=sig,   # 4. serialize+write commit
                             committer=sig, message=b"init\n")
 repo.update_ref(b"refs/heads/main", commit,                 # 5. move branch (create-only)
-                expected_old=None, message=b"commit: init", signer=sig)
+                create=True, message=b"commit: init", signer=sig)
 ```
 
 Each numbered step is a single grit-lib call (or a short fixed sequence) wrapped with
@@ -209,8 +213,9 @@ argument validation performed before any disk write:
   existing ref). The message carries the ref name and the expected vs actual oids.
   Registered in `src/lib.rs` and exported in `__all__`.
 - **`ValueError`** (binding-layer, pre-write) — `create_commit`/`create_tag` require
-  `author` XOR `author_raw` (committer/tagger likewise) and a non-optional `message`.
-  Validated up front so a misuse never half-writes.
+  `author` XOR `author_raw` (committer/tagger likewise) and a non-optional `message`;
+  `update_ref` rejects `create=True` combined with `expected_old=<oid>`. Validated up
+  front so a misuse never half-writes.
 - **`OSError`** — grit-lib `Error::Io` (unwritable path, disk full, `stage()` on a
   missing file) maps to `OSError` with errno, exactly as the read-core already does.
 - **`GritError`** — grit-lib `IndexError` and the `#[non_exhaustive]` catch-all map
