@@ -103,3 +103,36 @@ def test_delete_ref_and_cas_delete(tmp_path, git_env):
         cwd=repo, env=git_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     ).returncode
     assert rc != 0  # ref is gone
+
+
+def test_set_head_symbolic(tmp_path, git_env):
+    import pylibgrit
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _init(repo, git_env)
+    _commit(repo, git_env, "one")
+    pg = pylibgrit.Repository.open(str(repo / ".git"))
+    pg.set_head(b"refs/heads/other")
+    got = subprocess.run(
+        ["git", "symbolic-ref", "HEAD"], cwd=repo, env=git_env,
+        stdout=subprocess.PIPE, check=True,
+    ).stdout.decode().strip()
+    assert got == "refs/heads/other"
+
+
+def test_set_symbolic_ref(tmp_path, git_env):
+    import pylibgrit
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _init(repo, git_env)
+    c1 = _commit(repo, git_env, "one")
+    pg = pylibgrit.Repository.open(str(repo / ".git"))
+    pg.update_ref(b"refs/heads/main", pylibgrit.ObjectId.from_hex(c1))
+    pg.set_symbolic_ref(b"refs/heads/alias", b"refs/heads/main")
+    got = subprocess.run(
+        ["git", "symbolic-ref", "refs/heads/alias"], cwd=repo, env=git_env,
+        stdout=subprocess.PIPE, check=True,
+    ).stdout.decode().strip()
+    assert got == "refs/heads/main"

@@ -510,6 +510,30 @@ impl Repository {
             .map_err(map_err)
     }
 
+    // AIDEV-NOTE: Point HEAD at a branch (symbolic ref). target is a ref name, e.g.
+    // b"refs/heads/main". Must be UTF-8.
+    fn set_head(&self, py: Python<'_>, target: Vec<u8>) -> PyResult<()> {
+        let target_str = std::str::from_utf8(&target)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref target"))?
+            .to_owned();
+        let git_dir = self.inner.git_dir.clone();
+        py.allow_threads(|| grit_lib::refs::write_symbolic_ref(&git_dir, "HEAD", &target_str))
+            .map_err(map_err)
+    }
+
+    // AIDEV-NOTE: Write an arbitrary symbolic ref (name -> target ref name). Both must be UTF-8.
+    fn set_symbolic_ref(&self, py: Python<'_>, name: Vec<u8>, target: Vec<u8>) -> PyResult<()> {
+        let name_str = std::str::from_utf8(&name)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
+            .to_owned();
+        let target_str = std::str::from_utf8(&target)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref target"))?
+            .to_owned();
+        let git_dir = self.inner.git_dir.clone();
+        py.allow_threads(|| grit_lib::refs::write_symbolic_ref(&git_dir, &name_str, &target_str))
+            .map_err(map_err)
+    }
+
     // AIDEV-NOTE: Build an annotated-tag OBJECT and write it; returns its oid (== git mktag).
     // Pointing refs/tags/<name> at it is a separate update_ref. FIDELITY LIMITATION: grit-lib's
     // TagData stores tag/tagger/message as String only (no *_raw byte fields like CommitData),
