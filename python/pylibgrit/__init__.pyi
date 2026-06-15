@@ -28,6 +28,7 @@ __all__ = [
     "ObjectNotFoundError",
     "Odb",
     "Reference",
+    "RefMismatchError",
     "Repository",
     "RepositoryError",
     "Signature",
@@ -49,6 +50,9 @@ class ObjectNotFoundError(GritError):
 
 class InvalidObjectError(GritError):
     """Raised when an object cannot be parsed or is otherwise malformed."""
+
+class RefMismatchError(GritError):
+    """Raised when a ref's current value fails a compare-and-swap / create-only check."""
 
 # --- Object kind ----------------------------------------------------------
 

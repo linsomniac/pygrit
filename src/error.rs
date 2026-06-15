@@ -35,6 +35,12 @@ create_exception!(
     GritError,
     "Malformed id or corrupt/undecodable object."
 );
+create_exception!(
+    _pylibgrit,
+    RefMismatchError,
+    GritError,
+    "A ref's current value did not match the expected value (compare-and-swap/create-only)."
+);
 
 // AIDEV-NOTE: We CANNOT write `impl From<grit_lib::error::Error> for PyErr` — the
 // orphan rule forbids it because BOTH `grit_lib::error::Error` and `PyErr` are
@@ -102,6 +108,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "InvalidObjectError",
         m.py().get_type::<InvalidObjectError>(),
+    )?;
+    m.add(
+        "RefMismatchError",
+        m.py().get_type::<RefMismatchError>(),
     )?;
     Ok(())
 }
