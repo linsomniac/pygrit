@@ -417,9 +417,10 @@ impl Repository {
     // AIDEV-NOTE: Create/move a ref. Three states (design §Ref safety): default overwrites;
     // create=True requires the ref be absent; expected_old=<oid> is compare-and-swap. create +
     // expected_old together is a usage error. The read-compare-write is best-effort (no atomic
-    // primitive in grit-lib — see refs::read_current_oid). Ref name must be UTF-8. (message=/
-    // signer= reflog wiring is added in Task 13.)
-    #[pyo3(signature = (name, target, *, expected_old=None, create=false))]
+    // primitive in grit-lib — see refs::read_current_oid). Ref name must be UTF-8. When message=
+    // is given (with signer=), an old->new reflog entry is appended after the write.
+    #[pyo3(signature = (name, target, *, expected_old=None, create=false, message=None, signer=None))]
+    #[allow(clippy::too_many_arguments)]
     fn update_ref(
         &self,
         py: Python<'_>,
@@ -427,6 +428,8 @@ impl Repository {
         target: &crate::objects::ObjectId,
         expected_old: Option<crate::objects::ObjectId>,
         create: bool,
+        message: Option<Vec<u8>>,
+        signer: Option<PyRef<'_, crate::objects::Signature>>,
     ) -> PyResult<()> {
         if create && expected_old.is_some() {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -436,6 +439,7 @@ impl Repository {
         let refname = std::str::from_utf8(&name)
             .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
             .to_owned();
+        let reflog = reflog_args(message, signer.as_deref())?;
         let git_dir = self.inner.git_dir.clone();
         let new_oid = target.inner();
 
@@ -448,8 +452,8 @@ impl Repository {
             }
         } else if let Some(exp) = &expected_old {
             let exp_oid = exp.inner();
-            match current {
-                Some(cur) if cur == exp_oid => {}
+            match &current {
+                Some(cur) if *cur == exp_oid => {}
                 Some(cur) => {
                     return Err(crate::error::RefMismatchError::new_err(format!(
                         "ref {refname} is {}, expected {}",
@@ -466,30 +470,45 @@ impl Repository {
             }
         }
 
+        let old_for_log = current.unwrap_or_else(|| crate::refs::zero_like(&new_oid));
         py.allow_threads(|| grit_lib::refs::write_ref(&git_dir, &refname, &new_oid))
-            .map_err(map_err)
+            .map_err(map_err)?;
+        if let Some((ident, msg)) = reflog {
+            // force_create=true: message= is an explicit opt-in, so guarantee the entry rather
+            // than depending on grit-lib's core.logAllRefUpdates auto-create default.
+            py.allow_threads(|| {
+                grit_lib::refs::append_reflog(
+                    &git_dir, &refname, &old_for_log, &new_oid, &ident, &msg, true,
+                )
+            })
+            .map_err(map_err)?;
+        }
+        Ok(())
     }
 
     // AIDEV-NOTE: Delete a ref. Default deletes unconditionally; expected_old=<oid> is a
-    // compare-and-swap delete (best-effort, same caveat as update_ref). (message=/signer= reflog
-    // wiring is added in Task 13.)
-    #[pyo3(signature = (name, *, expected_old=None))]
+    // compare-and-swap delete (best-effort, same caveat as update_ref). When message=/signer= are
+    // given and the ref existed, an old->zero reflog entry is appended before the delete.
+    #[pyo3(signature = (name, *, expected_old=None, message=None, signer=None))]
     fn delete_ref(
         &self,
         py: Python<'_>,
         name: Vec<u8>,
         expected_old: Option<crate::objects::ObjectId>,
+        message: Option<Vec<u8>>,
+        signer: Option<PyRef<'_, crate::objects::Signature>>,
     ) -> PyResult<()> {
         let refname = std::str::from_utf8(&name)
             .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
             .to_owned();
         let git_dir = self.inner.git_dir.clone();
+        let reflog = reflog_args(message, signer.as_deref())?;
+        let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
 
         if let Some(exp) = &expected_old {
             let exp_oid = exp.inner();
-            let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
-            match current {
-                Some(cur) if cur == exp_oid => {}
+            match &current {
+                Some(cur) if *cur == exp_oid => {}
                 Some(cur) => {
                     return Err(crate::error::RefMismatchError::new_err(format!(
                         "ref {refname} is {}, expected {}",
@@ -506,8 +525,47 @@ impl Repository {
             }
         }
 
+        if let (Some((ident, msg)), Some(cur)) = (&reflog, &current) {
+            let zero = crate::refs::zero_like(cur);
+            // force_create=true: explicit opt-in via message= (see update_ref).
+            py.allow_threads(|| {
+                grit_lib::refs::append_reflog(&git_dir, &refname, cur, &zero, ident, msg, true)
+            })
+            .map_err(map_err)?;
+        }
+
         py.allow_threads(|| grit_lib::refs::delete_ref(&git_dir, &refname))
             .map_err(map_err)
+    }
+
+    // AIDEV-NOTE: Explicitly append a reflog entry: <old> <new> <identity>\t<message>. signer is
+    // the full wire identity; message and identity must be UTF-8. force_create=True creates the
+    // reflog file even if the repo would not auto-create it (e.g. for arbitrary refs).
+    #[pyo3(signature = (name, old, new, *, signer, message, force_create=false))]
+    #[allow(clippy::too_many_arguments)]
+    fn append_reflog(
+        &self,
+        py: Python<'_>,
+        name: Vec<u8>,
+        old: &crate::objects::ObjectId,
+        new: &crate::objects::ObjectId,
+        signer: PyRef<'_, crate::objects::Signature>,
+        message: Vec<u8>,
+        force_create: bool,
+    ) -> PyResult<()> {
+        let refname = std::str::from_utf8(&name)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
+            .to_owned();
+        let ident = utf8_field("signer", signer.wire_bytes())?;
+        let msg = utf8_field("reflog message", message)?;
+        let git_dir = self.inner.git_dir.clone();
+        let (old_oid, new_oid) = (old.inner(), new.inner());
+        py.allow_threads(|| {
+            grit_lib::refs::append_reflog(
+                &git_dir, &refname, &old_oid, &new_oid, &ident, &msg, force_create,
+            )
+        })
+        .map_err(map_err)
     }
 
     // AIDEV-NOTE: Point HEAD at a branch (symbolic ref). target is a ref name, e.g.
@@ -764,6 +822,27 @@ pub(crate) fn read_blob_bytes(
         return Ok(format!("Subproject commit {}\n", oid.to_hex()).into_bytes());
     }
     Ok(obj.data)
+}
+
+// AIDEV-NOTE: Resolve the optional reflog request for a ref op. Returns Some((identity, message))
+// only when a message is given; a message without a signer is a usage error. append_reflog wants
+// the full wire identity ("Name <email> <unix> <+HHMM>") and a UTF-8 message. signer.wire_bytes()
+// is UTF-8 for normal identities; non-UTF-8 signer/message raise ValueError.
+fn reflog_args(
+    message: Option<Vec<u8>>,
+    signer: Option<&crate::objects::Signature>,
+) -> PyResult<Option<(String, String)>> {
+    match message {
+        None => Ok(None),
+        Some(msg) => {
+            let signer = signer.ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("message= requires signer=")
+            })?;
+            let ident = utf8_field("signer", signer.wire_bytes())?;
+            let msg = utf8_field("reflog message", msg)?;
+            Ok(Some((ident, msg)))
+        }
+    }
 }
 
 // AIDEV-NOTE: grit-lib's TagData fields are `String`, so tag name/tagger/message must be UTF-8.

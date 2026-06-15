@@ -121,8 +121,7 @@ pub(crate) fn read_current_oid(
 }
 
 // AIDEV-NOTE: A zero (null) ObjectId matching the width of `like` (SHA-1 vs SHA-256). Used as the
-// reflog "old" value when creating a previously-absent ref (Task 13).
-#[allow(dead_code)] // used by reflog wiring in Task 13
+// reflog "old" value when creating a previously-absent ref (update_ref/delete_ref reflog wiring).
 pub(crate) fn zero_like(like: &grit_lib::objects::ObjectId) -> grit_lib::objects::ObjectId {
     grit_lib::objects::ObjectId::from_bytes(&vec![0u8; like.as_bytes().len()])
         .expect("all-zero buffer of valid width is a valid ObjectId")
