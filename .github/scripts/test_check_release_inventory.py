@@ -53,9 +53,18 @@ def test_extra_sdist_fails(tmp_path: Path) -> None:
     assert any("sdist" in e for e in errors), errors
 
 
-def test_wrong_wheel_count_fails(tmp_path: Path) -> None:
+def test_too_few_wheels_fails(tmp_path: Path) -> None:
     _good_dist(tmp_path)
     (tmp_path / "pygrit-0.1.0-cp311-abi3-macosx_11_0_arm64.whl").unlink()
+    errors = check_inventory(tmp_path)
+    assert any("6 wheels" in e for e in errors), errors
+
+
+def test_too_many_wheels_fails(tmp_path: Path) -> None:
+    _good_dist(tmp_path)
+    # A 7th valid abi3 wheel (distinct platform, same version) — only the count check
+    # should fire, proving the gate rejects over-count as well as under-count.
+    _touch(tmp_path, "pygrit-0.1.0-cp311-abi3-macosx_14_0_arm64.whl")
     errors = check_inventory(tmp_path)
     assert any("6 wheels" in e for e in errors), errors
 
