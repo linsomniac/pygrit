@@ -414,6 +414,54 @@ impl Repository {
         ))
     }
 
+    // AIDEV-NOTE: Build an annotated-tag OBJECT and write it; returns its oid (== git mktag).
+    // Pointing refs/tags/<name> at it is a separate update_ref. FIDELITY LIMITATION: grit-lib's
+    // TagData stores tag/tagger/message as String only (no *_raw byte fields like CommitData),
+    // so all three must be valid UTF-8 — non-UTF-8 raises ValueError (mirrors the read-side Tag
+    // limitation). target_kind names the tagged object's type ("commit"/"tree"/"blob"/"tag").
+    // tagger comes from a Signature or raw bytes, or is omitted (None) for a tagger-less tag.
+    #[pyo3(signature = (target, target_kind, name, *, message, tagger=None, tagger_raw=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn create_tag(
+        &self,
+        py: Python<'_>,
+        target: &crate::objects::ObjectId,
+        target_kind: &Bound<'_, PyAny>,
+        name: Vec<u8>,
+        message: Vec<u8>,
+        tagger: Option<PyRef<'_, crate::objects::Signature>>,
+        tagger_raw: Option<Vec<u8>>,
+    ) -> PyResult<crate::objects::ObjectId> {
+        let kind = crate::objects::py_to_kind(target_kind)?;
+        let type_str = match kind {
+            grit_lib::objects::ObjectKind::Commit => "commit",
+            grit_lib::objects::ObjectKind::Tree => "tree",
+            grit_lib::objects::ObjectKind::Blob => "blob",
+            grit_lib::objects::ObjectKind::Tag => "tag",
+        };
+        // tagger is optional; when present it must resolve (Signature XOR raw) and be UTF-8.
+        let tagger_str = match (tagger, tagger_raw) {
+            (None, None) => None,
+            (s, r) => {
+                let sig_ref: Option<&crate::objects::Signature> = s.as_deref();
+                let bytes = crate::objects::resolve_ident("tagger", sig_ref, r)?;
+                Some(utf8_field("tagger", bytes)?)
+            }
+        };
+        let tdata = grit_lib::objects::TagData {
+            object: target.inner(),
+            object_type: type_str.to_owned(),
+            tag: utf8_field("tag name", name)?,
+            tagger: tagger_str,
+            message: utf8_field("tag message", message)?,
+        };
+        let raw = grit_lib::objects::serialize_tag(&tdata);
+        let oid = py
+            .allow_threads(|| self.inner.odb.write(grit_lib::objects::ObjectKind::Tag, &raw))
+            .map_err(map_err)?;
+        Ok(crate::objects::ObjectId::from_inner(oid))
+    }
+
     // AIDEV-NOTE: Build a commit object and write it (== git commit-tree). Pure: returns the new
     // oid and moves no ref. Identity comes from a Signature (formatted to wire bytes) or a raw
     // byte header (author_raw/committer_raw) — exactly one of each pair, enforced by
@@ -596,6 +644,13 @@ pub(crate) fn read_blob_bytes(
         return Ok(format!("Subproject commit {}\n", oid.to_hex()).into_bytes());
     }
     Ok(obj.data)
+}
+
+// AIDEV-NOTE: grit-lib's TagData fields are `String`, so tag name/tagger/message must be UTF-8.
+// Convert here and raise ValueError (not a silent lossy decode) on non-UTF-8 input.
+fn utf8_field(what: &str, bytes: Vec<u8>) -> PyResult<String> {
+    String::from_utf8(bytes)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err(format!("{what} must be valid UTF-8")))
 }
 
 // AIDEV-NOTE: Map raw bytes to a String 1:1 (each byte -> its U+00xx code point, latin-1

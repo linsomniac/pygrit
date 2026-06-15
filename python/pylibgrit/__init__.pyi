@@ -293,3 +293,6 @@ class Repository:
                       author: Signature | None = None, committer: Signature | None = None,
                       author_raw: bytes | None = None, committer_raw: bytes | None = None,
                       encoding: str | None = None) -> ObjectId: ...
+    def create_tag(self, target: ObjectId, target_kind: ObjectKind, name: bytes, *,
+                   message: bytes,
+                   tagger: Signature | None = None, tagger_raw: bytes | None = None) -> ObjectId: ...
