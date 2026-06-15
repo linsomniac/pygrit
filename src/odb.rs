@@ -5,7 +5,7 @@ use std::sync::Arc;
 use pyo3::prelude::*;
 
 use crate::error::map_err;
-use crate::objects::{kind_to_py, Object, ObjectId};
+use crate::objects::{kind_to_py, py_to_kind, Object, ObjectId};
 
 // AIDEV-NOTE: Odb holds an `Arc<grit_lib::repo::Repository>` (a clone of the parent
 // Repository's Arc) rather than a borrow, so a Python `repo.odb` handle keeps the repo
@@ -40,5 +40,30 @@ impl Odb {
     fn exists(&self, py: Python<'_>, oid: &ObjectId) -> bool {
         let want = oid.inner();
         py.allow_threads(|| self.repo.odb.exists(&want))
+    }
+
+    // AIDEV-NOTE: Write a loose object and return its oid. `data: Vec<u8>` owns a copy so it
+    // can move into the allow_threads closure (the write decompress/hash/IO is released off the
+    // GIL). On-disk effect is immediate (atomic temp-file + rename; loose objects are 0o444).
+    // Re-writing an existing object is a no-op "freshen", not an error (git semantics).
+    fn write(
+        &self,
+        py: Python<'_>,
+        kind: &Bound<'_, PyAny>,
+        data: Vec<u8>,
+    ) -> PyResult<ObjectId> {
+        let k = py_to_kind(kind)?;
+        let oid = py
+            .allow_threads(|| self.repo.odb.write(k, &data))
+            .map_err(map_err)?;
+        Ok(ObjectId::from_inner(oid))
+    }
+
+    // AIDEV-NOTE: Compute an object's oid WITHOUT writing it (git hash-object without -w).
+    // grit-lib's Odb::hash is infallible and auto-detects the repo's SHA-1/SHA-256 algo.
+    fn hash(&self, py: Python<'_>, kind: &Bound<'_, PyAny>, data: Vec<u8>) -> PyResult<ObjectId> {
+        let k = py_to_kind(kind)?;
+        let oid = py.allow_threads(|| self.repo.odb.hash(k, &data));
+        Ok(ObjectId::from_inner(oid))
     }
 }

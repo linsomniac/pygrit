@@ -318,6 +318,22 @@ pub fn kind_to_py(py: Python<'_>, k: grit_lib::objects::ObjectKind) -> PyResult<
     Ok(member.unbind())
 }
 
+// AIDEV-NOTE: Inverse of kind_to_py: map a public pylibgrit.ObjectKind IntEnum member
+// (an int subclass) back to grit_lib's ObjectKind. The integer values MUST match
+// object_kind_discriminant()/the IntEnum in __init__.py (asserted by tests).
+pub(crate) fn py_to_kind(obj: &Bound<'_, PyAny>) -> PyResult<grit_lib::objects::ObjectKind> {
+    let v: i32 = obj.extract()?;
+    match v {
+        0 => Ok(grit_lib::objects::ObjectKind::Commit),
+        1 => Ok(grit_lib::objects::ObjectKind::Tree),
+        2 => Ok(grit_lib::objects::ObjectKind::Blob),
+        3 => Ok(grit_lib::objects::ObjectKind::Tag),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "invalid ObjectKind value: {other}"
+        ))),
+    }
+}
+
 // AIDEV-NOTE: `Object` is the value `Odb::read` returns, surfaced to Python. It is
 // `frozen` (immutable). `kind` is stored as the already-constructed pylibgrit.ObjectKind
 // IntEnum member (built once at read time via kind_to_py) so the getter can hand back
