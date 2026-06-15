@@ -17,10 +17,17 @@ def _commit(repo, env, msg):
     (repo / "f").write_text(msg)
     subprocess.run(["git", "add", "f"], cwd=repo, env=env, check=True)
     subprocess.run(["git", "commit", "-q", "-m", msg], cwd=repo, env=env, check=True)
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, env=env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    return (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
 
 def test_update_ref_overwrite(tmp_path, git_env):
@@ -32,10 +39,17 @@ def test_update_ref_overwrite(tmp_path, git_env):
     c1 = _commit(repo, git_env, "one")
     pg = pylibgrit.Repository.open(str(repo / ".git"))
     pg.update_ref(b"refs/heads/feature", pylibgrit.ObjectId.from_hex(c1))
-    got = subprocess.run(
-        ["git", "rev-parse", "refs/heads/feature"], cwd=repo, env=git_env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    got = (
+        subprocess.run(
+            ["git", "rev-parse", "refs/heads/feature"],
+            cwd=repo,
+            env=git_env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert got == c1
 
 
@@ -96,11 +110,14 @@ def test_delete_ref_and_cas_delete(tmp_path, git_env):
     o1, o2 = pylibgrit.ObjectId.from_hex(c1), pylibgrit.ObjectId.from_hex(c2)
     pg.update_ref(b"refs/heads/d", o2)
     with pytest.raises(pylibgrit.RefMismatchError):
-        pg.delete_ref(b"refs/heads/d", expected_old=o1)   # stale -> refused
-    pg.delete_ref(b"refs/heads/d", expected_old=o2)        # matches -> deleted
+        pg.delete_ref(b"refs/heads/d", expected_old=o1)  # stale -> refused
+    pg.delete_ref(b"refs/heads/d", expected_old=o2)  # matches -> deleted
     rc = subprocess.run(
         ["git", "rev-parse", "--verify", "-q", "refs/heads/d"],
-        cwd=repo, env=git_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        cwd=repo,
+        env=git_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     ).returncode
     assert rc != 0  # ref is gone
 
@@ -114,10 +131,17 @@ def test_set_head_symbolic(tmp_path, git_env):
     _commit(repo, git_env, "one")
     pg = pylibgrit.Repository.open(str(repo / ".git"))
     pg.set_head(b"refs/heads/other")
-    got = subprocess.run(
-        ["git", "symbolic-ref", "HEAD"], cwd=repo, env=git_env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    got = (
+        subprocess.run(
+            ["git", "symbolic-ref", "HEAD"],
+            cwd=repo,
+            env=git_env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert got == "refs/heads/other"
 
 
@@ -131,8 +155,15 @@ def test_set_symbolic_ref(tmp_path, git_env):
     pg = pylibgrit.Repository.open(str(repo / ".git"))
     pg.update_ref(b"refs/heads/main", pylibgrit.ObjectId.from_hex(c1))
     pg.set_symbolic_ref(b"refs/heads/alias", b"refs/heads/main")
-    got = subprocess.run(
-        ["git", "symbolic-ref", "refs/heads/alias"], cwd=repo, env=git_env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    got = (
+        subprocess.run(
+            ["git", "symbolic-ref", "refs/heads/alias"],
+            cwd=repo,
+            env=git_env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert got == "refs/heads/main"

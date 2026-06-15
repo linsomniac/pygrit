@@ -33,4 +33,7 @@ def test_parallel_blob_writes_are_sound(tmp_path, git_env):
     assert not errors
     assert len(set(results.values())) == 50  # distinct contents -> distinct oids
     for n, hexoid in results.items():
-        assert pg.odb.read(pylibgrit.ObjectId.from_hex(hexoid)).data == f"content-{n}\n".encode()
+        assert (
+            pg.odb.read(pylibgrit.ObjectId.from_hex(hexoid)).data
+            == f"content-{n}\n".encode()
+        )

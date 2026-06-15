@@ -109,9 +109,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "InvalidObjectError",
         m.py().get_type::<InvalidObjectError>(),
     )?;
-    m.add(
-        "RefMismatchError",
-        m.py().get_type::<RefMismatchError>(),
-    )?;
+    m.add("RefMismatchError", m.py().get_type::<RefMismatchError>())?;
     Ok(())
 }

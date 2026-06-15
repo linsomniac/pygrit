@@ -273,7 +273,8 @@ impl Repository {
     fn index(&self, py: Python<'_>) -> PyResult<crate::index::Index> {
         let index_path = self.inner.git_dir.join("index");
         let loaded = if index_path.exists() {
-            py.allow_threads(|| self.inner.load_index()).map_err(map_err)?
+            py.allow_threads(|| self.inner.load_index())
+                .map_err(map_err)?
         } else {
             grit_lib::index::Index::new()
         };
@@ -478,7 +479,13 @@ impl Repository {
             // than depending on grit-lib's core.logAllRefUpdates auto-create default.
             py.allow_threads(|| {
                 grit_lib::refs::append_reflog(
-                    &git_dir, &refname, &old_for_log, &new_oid, &ident, &msg, true,
+                    &git_dir,
+                    &refname,
+                    &old_for_log,
+                    &new_oid,
+                    &ident,
+                    &msg,
+                    true,
                 )
             })
             .map_err(map_err)?;
@@ -562,7 +569,13 @@ impl Repository {
         let (old_oid, new_oid) = (old.inner(), new.inner());
         py.allow_threads(|| {
             grit_lib::refs::append_reflog(
-                &git_dir, &refname, &old_oid, &new_oid, &ident, &msg, force_create,
+                &git_dir,
+                &refname,
+                &old_oid,
+                &new_oid,
+                &ident,
+                &msg,
+                force_create,
             )
         })
         .map_err(map_err)
@@ -635,7 +648,11 @@ impl Repository {
         };
         let raw = grit_lib::objects::serialize_tag(&tdata);
         let oid = py
-            .allow_threads(|| self.inner.odb.write(grit_lib::objects::ObjectKind::Tag, &raw))
+            .allow_threads(|| {
+                self.inner
+                    .odb
+                    .write(grit_lib::objects::ObjectKind::Tag, &raw)
+            })
             .map_err(map_err)?;
         Ok(crate::objects::ObjectId::from_inner(oid))
     }
@@ -662,8 +679,7 @@ impl Repository {
         committer_raw: Option<Vec<u8>>,
         encoding: Option<String>,
     ) -> PyResult<crate::objects::ObjectId> {
-        let author_bytes =
-            crate::objects::resolve_ident("author", author.as_deref(), author_raw)?;
+        let author_bytes = crate::objects::resolve_ident("author", author.as_deref(), author_raw)?;
         let committer_bytes =
             crate::objects::resolve_ident("committer", committer.as_deref(), committer_raw)?;
         let parent_oids: Vec<grit_lib::objects::ObjectId> =

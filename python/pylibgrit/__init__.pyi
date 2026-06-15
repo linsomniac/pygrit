@@ -107,10 +107,21 @@ class Signature:
 
 @final
 class IndexEntry:
-    def __new__(cls, path: bytes, oid: ObjectId, mode: int, *,
-                ctime: tuple[int, int] = ..., mtime: tuple[int, int] = ...,
-                dev: int = 0, ino: int = 0, uid: int = 0, gid: int = 0,
-                size: int = 0, flags: int = 0) -> IndexEntry: ...
+    def __new__(
+        cls,
+        path: bytes,
+        oid: ObjectId,
+        mode: int,
+        *,
+        ctime: tuple[int, int] = ...,
+        mtime: tuple[int, int] = ...,
+        dev: int = 0,
+        ino: int = 0,
+        uid: int = 0,
+        gid: int = 0,
+        size: int = 0,
+        flags: int = 0,
+    ) -> IndexEntry: ...
     @property
     def path(self) -> bytes: ...
     @property
@@ -292,21 +303,55 @@ class Repository:
         first_parent: bool = ...,
     ) -> Iterator[Commit]: ...
     def diff(self, a: ObjectId, b: ObjectId) -> Diff: ...
-    def create_commit(self, tree: ObjectId, parents: list[ObjectId], *,
-                      message: bytes,
-                      author: Signature | None = None, committer: Signature | None = None,
-                      author_raw: bytes | None = None, committer_raw: bytes | None = None,
-                      encoding: str | None = None) -> ObjectId: ...
-    def create_tag(self, target: ObjectId, target_kind: ObjectKind, name: bytes, *,
-                   message: bytes,
-                   tagger: Signature | None = None, tagger_raw: bytes | None = None) -> ObjectId: ...
-    def update_ref(self, name: bytes, target: ObjectId, *,
-                   expected_old: ObjectId | None = None, create: bool = False,
-                   message: bytes | None = None, signer: Signature | None = None) -> None: ...
-    def delete_ref(self, name: bytes, *,
-                   expected_old: ObjectId | None = None,
-                   message: bytes | None = None, signer: Signature | None = None) -> None: ...
-    def append_reflog(self, name: bytes, old: ObjectId, new: ObjectId, *,
-                      signer: Signature, message: bytes, force_create: bool = False) -> None: ...
+    def create_commit(
+        self,
+        tree: ObjectId,
+        parents: list[ObjectId],
+        *,
+        message: bytes,
+        author: Signature | None = None,
+        committer: Signature | None = None,
+        author_raw: bytes | None = None,
+        committer_raw: bytes | None = None,
+        encoding: str | None = None,
+    ) -> ObjectId: ...
+    def create_tag(
+        self,
+        target: ObjectId,
+        target_kind: ObjectKind,
+        name: bytes,
+        *,
+        message: bytes,
+        tagger: Signature | None = None,
+        tagger_raw: bytes | None = None,
+    ) -> ObjectId: ...
+    def update_ref(
+        self,
+        name: bytes,
+        target: ObjectId,
+        *,
+        expected_old: ObjectId | None = None,
+        create: bool = False,
+        message: bytes | None = None,
+        signer: Signature | None = None,
+    ) -> None: ...
+    def delete_ref(
+        self,
+        name: bytes,
+        *,
+        expected_old: ObjectId | None = None,
+        message: bytes | None = None,
+        signer: Signature | None = None,
+    ) -> None: ...
+    def append_reflog(
+        self,
+        name: bytes,
+        old: ObjectId,
+        new: ObjectId,
+        *,
+        signer: Signature,
+        message: bytes,
+        force_create: bool = False,
+    ) -> None: ...
     def set_head(self, target: bytes) -> None: ...
     def set_symbolic_ref(self, name: bytes, target: bytes) -> None: ...

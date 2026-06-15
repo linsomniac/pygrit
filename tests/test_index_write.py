@@ -7,8 +7,11 @@ def _init(repo, env):
 
 def _ls_files_stage(repo, env):
     return subprocess.run(
-        ["git", "ls-files", "--stage"], cwd=repo, env=env,
-        stdout=subprocess.PIPE, check=True,
+        ["git", "ls-files", "--stage"],
+        cwd=repo,
+        env=env,
+        stdout=subprocess.PIPE,
+        check=True,
     ).stdout.decode()
 
 
@@ -75,10 +78,17 @@ def test_write_tree_matches_git(tmp_path, git_env):
     idx.write()
     tree = idx.write_tree()
 
-    git_tree = subprocess.run(
-        ["git", "write-tree"], cwd=repo, env=git_env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    git_tree = (
+        subprocess.run(
+            ["git", "write-tree"],
+            cwd=repo,
+            env=git_env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert tree.hex == git_tree
 
 
@@ -97,10 +107,17 @@ def test_stage_real_file_matches_git(tmp_path, git_env):
     tree = idx.write_tree()
 
     subprocess.run(["git", "add", "a.txt"], cwd=repo, env=git_env, check=True)
-    git_tree = subprocess.run(
-        ["git", "write-tree"], cwd=repo, env=git_env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    git_tree = (
+        subprocess.run(
+            ["git", "write-tree"],
+            cwd=repo,
+            env=git_env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert tree.hex == git_tree
 
 

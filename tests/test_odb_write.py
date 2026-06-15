@@ -1,6 +1,5 @@
 import subprocess
 
-import pytest
 
 from tests.gitlib import cat_file_data, cat_file_type
 
@@ -16,11 +15,18 @@ def test_write_blob_matches_git_hash_object(tmp_path, git_env):
     repo.mkdir()
     _init(repo, git_env)
     # git's oracle oid for the same bytes
-    git_oid = subprocess.run(
-        ["git", "hash-object", "-w", "--stdin"],
-        cwd=repo, env=git_env, input=b"hello\n",
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    git_oid = (
+        subprocess.run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=repo,
+            env=git_env,
+            input=b"hello\n",
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
     pg = pylibgrit.Repository.open(str(repo / ".git"))
     oid = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")

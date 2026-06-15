@@ -46,12 +46,7 @@ impl Odb {
     // can move into the allow_threads closure (the write decompress/hash/IO is released off the
     // GIL). On-disk effect is immediate (atomic temp-file + rename; loose objects are 0o444).
     // Re-writing an existing object is a no-op "freshen", not an error (git semantics).
-    fn write(
-        &self,
-        py: Python<'_>,
-        kind: &Bound<'_, PyAny>,
-        data: Vec<u8>,
-    ) -> PyResult<ObjectId> {
+    fn write(&self, py: Python<'_>, kind: &Bound<'_, PyAny>, data: Vec<u8>) -> PyResult<ObjectId> {
         let k = py_to_kind(kind)?;
         let oid = py
             .allow_threads(|| self.repo.odb.write(k, &data))

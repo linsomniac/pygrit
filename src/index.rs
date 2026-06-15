@@ -116,7 +116,10 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new_loaded(inner: grit_lib::index::Index, repo: Arc<grit_lib::repo::Repository>) -> Self {
+    pub fn new_loaded(
+        inner: grit_lib::index::Index,
+        repo: Arc<grit_lib::repo::Repository>,
+    ) -> Self {
         Self {
             inner: Mutex::new(inner),
             repo,
@@ -151,7 +154,10 @@ impl Index {
     }
 
     fn add_entry(&self, entry: PyRef<'_, IndexEntry>) {
-        self.inner.lock().unwrap().add_or_replace(entry.inner.clone());
+        self.inner
+            .lock()
+            .unwrap()
+            .add_or_replace(entry.inner.clone());
     }
 
     fn remove(&self, path: Vec<u8>) -> bool {
@@ -192,7 +198,11 @@ impl Index {
         };
 
         let oid = py
-            .allow_threads(|| self.repo.odb.write(grit_lib::objects::ObjectKind::Blob, &blob_bytes))
+            .allow_threads(|| {
+                self.repo
+                    .odb
+                    .write(grit_lib::objects::ObjectKind::Blob, &blob_bytes)
+            })
             .map_err(map_err)?;
         let entry = py
             .allow_threads(|| grit_lib::index::entry_from_stat(&abs, &rel_bytes, oid, mode))
@@ -209,8 +219,7 @@ impl Index {
     // mirroring TreeIter/ReferenceIter). The iterator outlives this Index and is unaffected by
     // later mutations. grit's Index exposes its entries via the public `entries` Vec field.
     fn __iter__(&self) -> IndexEntryIter {
-        let snapshot: Vec<grit_lib::index::IndexEntry> =
-            self.inner.lock().unwrap().entries.clone();
+        let snapshot: Vec<grit_lib::index::IndexEntry> = self.inner.lock().unwrap().entries.clone();
         IndexEntryIter {
             entries: snapshot.into(),
             idx: 0,

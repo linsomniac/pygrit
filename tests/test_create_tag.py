@@ -13,10 +13,17 @@ def _one_commit(repo, env):
     (repo / "a.txt").write_text("hi\n")
     subprocess.run(["git", "add", "a.txt"], cwd=repo, env=env, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "c"], cwd=repo, env=env, check=True)
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, env=env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    return (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
 
 def test_create_tag_matches_git(tmp_path, git_env):
@@ -30,7 +37,11 @@ def test_create_tag_matches_git(tmp_path, git_env):
     target = pylibgrit.ObjectId.from_hex(head)
     tagger = pylibgrit.Signature(b"Tagger", b"tag@example.com", (1112911993, 0))
     tag = pg.create_tag(
-        target, pylibgrit.ObjectKind.COMMIT, b"v1", message=b"release one\n", tagger=tagger,
+        target,
+        pylibgrit.ObjectKind.COMMIT,
+        b"v1",
+        message=b"release one\n",
+        tagger=tagger,
     )
     assert cat_file_type(repo, tag.hex) == "tag"
     # read-side view agrees
@@ -47,12 +58,21 @@ def test_create_tag_matches_git(tmp_path, git_env):
     )
     subprocess.run(
         ["git", "tag", "-a", "v1", "-m", "release one", head],
-        cwd=repo, env=env, check=True,
+        cwd=repo,
+        env=env,
+        check=True,
     )
-    git_tag = subprocess.run(
-        ["git", "rev-parse", "refs/tags/v1"], cwd=repo, env=env,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout.decode().strip()
+    git_tag = (
+        subprocess.run(
+            ["git", "rev-parse", "refs/tags/v1"],
+            cwd=repo,
+            env=env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     assert tag.hex == git_tag
 
 
@@ -67,5 +87,10 @@ def test_create_tag_non_utf8_message_raises(tmp_path, git_env):
     target = pylibgrit.ObjectId.from_hex(head)
     tagger = pylibgrit.Signature(b"T", b"t@x", (1, 0))
     with pytest.raises(ValueError):
-        pg.create_tag(target, pylibgrit.ObjectKind.COMMIT, b"v2",
-                      message=b"\xff\xfe", tagger=tagger)
+        pg.create_tag(
+            target,
+            pylibgrit.ObjectKind.COMMIT,
+            b"v2",
+            message=b"\xff\xfe",
+            tagger=tagger,
+        )
