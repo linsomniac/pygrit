@@ -106,6 +106,28 @@ impl Reference {
     }
 }
 
+// AIDEV-NOTE: Best-effort read of a ref's CURRENT direct oid for compare-and-swap / create-only
+// checks. Returns None if the ref does not resolve. grit-lib exposes no atomic CAS primitive
+// (verified against 0.4.1 source), so callers do read -> compare -> write WITHOUT a held lock:
+// this catches the common non-concurrent "did it move since I read it?" case but is not a hard
+// guarantee against another process writing in the window (design §6). We deliberately collapse
+// any resolve error to None (treat as "no current value"); a corrupt ref therefore reads as
+// absent — acceptable under the documented best-effort contract.
+pub(crate) fn read_current_oid(
+    git_dir: &std::path::Path,
+    refname: &str,
+) -> Option<grit_lib::objects::ObjectId> {
+    grit_lib::refs::resolve_ref(git_dir, refname).ok()
+}
+
+// AIDEV-NOTE: A zero (null) ObjectId matching the width of `like` (SHA-1 vs SHA-256). Used as the
+// reflog "old" value when creating a previously-absent ref (Task 13).
+#[allow(dead_code)] // used by reflog wiring in Task 13
+pub(crate) fn zero_like(like: &grit_lib::objects::ObjectId) -> grit_lib::objects::ObjectId {
+    grit_lib::objects::ObjectId::from_bytes(&vec![0u8; like.as_bytes().len()])
+        .expect("all-zero buffer of valid width is a valid ObjectId")
+}
+
 /// Iterator over a repository's references; owns its own `Arc`s so it outlives the parent.
 #[pyclass(module = "pylibgrit._pylibgrit")]
 pub struct ReferenceIter {

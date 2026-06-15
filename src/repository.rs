@@ -414,6 +414,102 @@ impl Repository {
         ))
     }
 
+    // AIDEV-NOTE: Create/move a ref. Three states (design §Ref safety): default overwrites;
+    // create=True requires the ref be absent; expected_old=<oid> is compare-and-swap. create +
+    // expected_old together is a usage error. The read-compare-write is best-effort (no atomic
+    // primitive in grit-lib — see refs::read_current_oid). Ref name must be UTF-8. (message=/
+    // signer= reflog wiring is added in Task 13.)
+    #[pyo3(signature = (name, target, *, expected_old=None, create=false))]
+    fn update_ref(
+        &self,
+        py: Python<'_>,
+        name: Vec<u8>,
+        target: &crate::objects::ObjectId,
+        expected_old: Option<crate::objects::ObjectId>,
+        create: bool,
+    ) -> PyResult<()> {
+        if create && expected_old.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "pass create=True or expected_old=, not both",
+            ));
+        }
+        let refname = std::str::from_utf8(&name)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
+            .to_owned();
+        let git_dir = self.inner.git_dir.clone();
+        let new_oid = target.inner();
+
+        let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
+        if create {
+            if current.is_some() {
+                return Err(crate::error::RefMismatchError::new_err(format!(
+                    "ref {refname} already exists"
+                )));
+            }
+        } else if let Some(exp) = &expected_old {
+            let exp_oid = exp.inner();
+            match current {
+                Some(cur) if cur == exp_oid => {}
+                Some(cur) => {
+                    return Err(crate::error::RefMismatchError::new_err(format!(
+                        "ref {refname} is {}, expected {}",
+                        cur.to_hex(),
+                        exp_oid.to_hex()
+                    )))
+                }
+                None => {
+                    return Err(crate::error::RefMismatchError::new_err(format!(
+                        "ref {refname} does not exist, expected {}",
+                        exp_oid.to_hex()
+                    )))
+                }
+            }
+        }
+
+        py.allow_threads(|| grit_lib::refs::write_ref(&git_dir, &refname, &new_oid))
+            .map_err(map_err)
+    }
+
+    // AIDEV-NOTE: Delete a ref. Default deletes unconditionally; expected_old=<oid> is a
+    // compare-and-swap delete (best-effort, same caveat as update_ref). (message=/signer= reflog
+    // wiring is added in Task 13.)
+    #[pyo3(signature = (name, *, expected_old=None))]
+    fn delete_ref(
+        &self,
+        py: Python<'_>,
+        name: Vec<u8>,
+        expected_old: Option<crate::objects::ObjectId>,
+    ) -> PyResult<()> {
+        let refname = std::str::from_utf8(&name)
+            .map_err(|_| crate::error::invalid_ref("non-UTF-8 ref name"))?
+            .to_owned();
+        let git_dir = self.inner.git_dir.clone();
+
+        if let Some(exp) = &expected_old {
+            let exp_oid = exp.inner();
+            let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
+            match current {
+                Some(cur) if cur == exp_oid => {}
+                Some(cur) => {
+                    return Err(crate::error::RefMismatchError::new_err(format!(
+                        "ref {refname} is {}, expected {}",
+                        cur.to_hex(),
+                        exp_oid.to_hex()
+                    )))
+                }
+                None => {
+                    return Err(crate::error::RefMismatchError::new_err(format!(
+                        "ref {refname} does not exist, expected {}",
+                        exp_oid.to_hex()
+                    )))
+                }
+            }
+        }
+
+        py.allow_threads(|| grit_lib::refs::delete_ref(&git_dir, &refname))
+            .map_err(map_err)
+    }
+
     // AIDEV-NOTE: Build an annotated-tag OBJECT and write it; returns its oid (== git mktag).
     // Pointing refs/tags/<name> at it is a separate update_ref. FIDELITY LIMITATION: grit-lib's
     // TagData stores tag/tagger/message as String only (no *_raw byte fields like CommitData),
