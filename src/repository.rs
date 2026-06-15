@@ -413,6 +413,57 @@ impl Repository {
             entries,
         ))
     }
+
+    // AIDEV-NOTE: Build a commit object and write it (== git commit-tree). Pure: returns the new
+    // oid and moves no ref. Identity comes from a Signature (formatted to wire bytes) or a raw
+    // byte header (author_raw/committer_raw) — exactly one of each pair, enforced by
+    // resolve_ident. We always populate CommitData.author_raw/committer_raw and raw_message so
+    // serialize_commit emits our exact bytes (byte-identical OID to git). `encoding` (an ASCII
+    // charset name) is optional. The serialize is cheap and runs under the GIL; the odb write
+    // releases it.
+    #[pyo3(signature = (tree, parents, *, message, author=None, committer=None,
+                        author_raw=None, committer_raw=None, encoding=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn create_commit(
+        &self,
+        py: Python<'_>,
+        tree: &crate::objects::ObjectId,
+        parents: Vec<crate::objects::ObjectId>,
+        message: Vec<u8>,
+        author: Option<PyRef<'_, crate::objects::Signature>>,
+        committer: Option<PyRef<'_, crate::objects::Signature>>,
+        author_raw: Option<Vec<u8>>,
+        committer_raw: Option<Vec<u8>>,
+        encoding: Option<String>,
+    ) -> PyResult<crate::objects::ObjectId> {
+        let author_bytes =
+            crate::objects::resolve_ident("author", author.as_deref(), author_raw)?;
+        let committer_bytes =
+            crate::objects::resolve_ident("committer", committer.as_deref(), committer_raw)?;
+        let parent_oids: Vec<grit_lib::objects::ObjectId> =
+            parents.iter().map(|p| p.inner()).collect();
+
+        let cdata = grit_lib::objects::CommitData {
+            tree: tree.inner(),
+            parents: parent_oids,
+            author: String::new(),
+            committer: String::new(),
+            author_raw: author_bytes,
+            committer_raw: committer_bytes,
+            encoding,
+            message: String::new(),
+            raw_message: Some(message),
+        };
+        let raw = grit_lib::objects::serialize_commit(&cdata);
+        let oid = py
+            .allow_threads(|| {
+                self.inner
+                    .odb
+                    .write(grit_lib::objects::ObjectKind::Commit, &raw)
+            })
+            .map_err(map_err)?;
+        Ok(crate::objects::ObjectId::from_inner(oid))
+    }
 }
 
 impl Repository {

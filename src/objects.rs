@@ -361,6 +361,26 @@ pub fn kind_to_py(py: Python<'_>, k: grit_lib::objects::ObjectKind) -> PyResult<
     Ok(member.unbind())
 }
 
+// AIDEV-NOTE: Resolve a commit/tag identity to the exact header bytes that go into the object.
+// Exactly one of a structured Signature or a raw byte string must be supplied. Returning the
+// bytes (placed in CommitData.author_raw / committer_raw) guarantees byte-identical OIDs.
+pub(crate) fn resolve_ident(
+    field: &str,
+    sig: Option<&Signature>,
+    raw: Option<Vec<u8>>,
+) -> PyResult<Vec<u8>> {
+    match (sig, raw) {
+        (Some(s), None) => Ok(s.wire_bytes()),
+        (None, Some(r)) => Ok(r),
+        (Some(_), Some(_)) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "provide {field}= or {field}_raw=, not both"
+        ))),
+        (None, None) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{field}= or {field}_raw= is required"
+        ))),
+    }
+}
+
 // AIDEV-NOTE: Inverse of kind_to_py: map a public pylibgrit.ObjectKind IntEnum member
 // (an int subclass) back to grit_lib's ObjectKind. The integer values MUST match
 // object_kind_discriminant()/the IntEnum in __init__.py (asserted by tests).
