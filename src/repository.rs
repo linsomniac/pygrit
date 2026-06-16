@@ -90,6 +90,8 @@ impl Repository {
     // loose-ref backend; reftable is out of scope for Phase B). `initial_branch` becomes the
     // symbolic HEAD target refs/heads/<branch>; we validate it as a ref so a bad name cannot
     // corrupt HEAD. initial_branch=None defaults to "main" (matches our own default branch).
+    // initial_branch is bytes (not str) for consistency with the rest of pylibgrit's write
+    // surface (ref/name fields are all bytes for byte-fidelity).
     #[staticmethod]
     #[pyo3(signature = (path, *, bare=false, initial_branch=None))]
     fn init(

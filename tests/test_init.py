@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 
 def _git_text(repo, env, *args):
     return (
@@ -37,3 +39,12 @@ def test_init_default_branch_is_main(tmp_path, git_env):
     work = tmp_path / "d"
     pylibgrit.Repository.init(str(work))
     assert _git_text(work, git_env, "symbolic-ref", "HEAD") == "refs/heads/main"
+
+
+def test_init_invalid_branch_name_raises(tmp_path):
+    import pylibgrit
+
+    work = tmp_path / "bad"
+    # A branch name with ".." is rejected by git ref-format rules before init writes HEAD.
+    with pytest.raises(pylibgrit.RepositoryError):
+        pylibgrit.Repository.init(str(work), initial_branch=b"bad..name")
