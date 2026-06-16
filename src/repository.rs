@@ -728,6 +728,26 @@ impl Repository {
         Ok(crate::objects::ObjectId::from_inner(oid))
     }
 
+    // AIDEV-NOTE: First merge base of two commits (== `git merge-base`), or None if unrelated.
+    // Phase B uses the FIRST base only (no recursive/virtual base for criss-cross histories;
+    // documented limitation). grit's merge_bases_all returns all bases; we take the first.
+    fn merge_base(
+        &self,
+        py: Python<'_>,
+        a: &crate::objects::ObjectId,
+        b: &crate::objects::ObjectId,
+    ) -> PyResult<Option<crate::objects::ObjectId>> {
+        let repo = Arc::clone(&self.inner);
+        let (ao, bo) = (a.inner(), b.inner());
+        let bases = py
+            .allow_threads(|| grit_lib::merge_base::merge_bases_all(&repo, &[ao, bo]))
+            .map_err(map_err)?;
+        Ok(bases
+            .into_iter()
+            .next()
+            .map(crate::objects::ObjectId::from_inner))
+    }
+
     // AIDEV-NOTE: Low-level single-file working-tree write (escape hatch under checkout_tree).
     // Wraps porcelain::checkout::write_to_worktree, which ALWAYS overwrites and natively handles
     // symlinks (mode 0o120000) and the exec bit (mode 0o100755). Requires a non-bare repo with a
