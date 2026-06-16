@@ -902,6 +902,10 @@ impl Repository {
             parent_oids.extend(extra.iter().map(|p| p.inner()));
         }
 
+        // Reflog subject is the first line of the message; compute it before `message` moves
+        // into CommitData below.
+        let subject = first_line(&message);
+
         let cdata = grit_lib::objects::CommitData {
             tree,
             parents: parent_oids,
@@ -911,7 +915,7 @@ impl Repository {
             committer_raw: committer_bytes.clone(),
             encoding,
             message: String::new(),
-            raw_message: Some(message.clone()),
+            raw_message: Some(message),
         };
         let raw = grit_lib::objects::serialize_commit(&cdata);
         let new_oid = py
@@ -927,7 +931,6 @@ impl Repository {
         .map_err(crate::refs::cas_to_pyerr)?;
 
         // Reflog: porcelain always logs (force_create). "commit (initial): <subject>" when unborn.
-        let subject = first_line(&message);
         let prefix = if exp.is_none() {
             "commit (initial): "
         } else {

@@ -41,7 +41,7 @@ def test_commit_index_first_commit_unborn(tmp_path, git_env):
     )
     assert parents == [oid.hex]  # no parents on the first commit
     reflog = _git(work, git_env, "reflog", "show", "refs/heads/main")
-    assert "initial" in reflog
+    assert "commit (initial): initial" in reflog
 
 
 def test_commit_index_advances_with_parent(tmp_path, git_env):
@@ -72,6 +72,8 @@ def test_commit_index_advances_with_parent(tmp_path, git_env):
         .split()
     )
     assert parents == [c2.hex, c1.hex]
+    reflog = _git(work, git_env, "reflog", "show", "refs/heads/main")
+    assert "commit: two" in reflog
 
 
 def test_commit_index_merge_extra_parents(tmp_path, git_env):
@@ -124,3 +126,43 @@ def test_commit_index_detached_head_raises(tmp_path, git_env):
     )
     with pytest.raises(pylibgrit.RepositoryError):
         repo.commit_index(message=b"x\n", author=sig, committer=sig)
+
+
+def test_commit_index_oid_matches_git_commit_tree(tmp_path, git_env):
+    import pylibgrit
+
+    work = tmp_path / "r"
+    repo = pylibgrit.Repository.init(str(work))
+    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    idx = repo.index()
+    idx.add(b"a.txt", blob, 0o100644)
+    idx.write()
+    # Pin identity + time to match the git oracle below (epoch 1112911993, +0000).
+    sig = pylibgrit.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
+    com = pylibgrit.Signature(
+        b"Test Committer", b"committer@example.com", (1112911993, 0)
+    )
+    oid = repo.commit_index(message=b"initial\n", author=sig, committer=com)
+
+    tree_hex = repo.commit(oid).tree.hex
+    env = dict(git_env)
+    env.update(
+        GIT_AUTHOR_NAME="Test Author",
+        GIT_AUTHOR_EMAIL="author@example.com",
+        GIT_AUTHOR_DATE="1112911993 +0000",
+        GIT_COMMITTER_NAME="Test Committer",
+        GIT_COMMITTER_EMAIL="committer@example.com",
+        GIT_COMMITTER_DATE="1112911993 +0000",
+    )
+    git_oid = (
+        subprocess.run(
+            ["git", "commit-tree", tree_hex, "-m", "initial"],
+            cwd=work,
+            env=env,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    assert oid.hex == git_oid  # byte-exact commit object parity
