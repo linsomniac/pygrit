@@ -470,36 +470,28 @@ impl Repository {
         let git_dir = self.inner.git_dir.clone();
         let new_oid = target.inner();
 
-        let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
-        if create {
-            if current.is_some() {
-                return Err(crate::error::RefMismatchError::new_err(format!(
-                    "ref {refname} already exists"
-                )));
-            }
-        } else if let Some(exp) = &expected_old {
-            let exp_oid = exp.inner();
-            match &current {
-                Some(cur) if *cur == exp_oid => {}
-                Some(cur) => {
-                    return Err(crate::error::RefMismatchError::new_err(format!(
-                        "ref {refname} is {}, expected {}",
-                        cur.to_hex(),
-                        exp_oid.to_hex()
-                    )))
-                }
-                None => {
-                    return Err(crate::error::RefMismatchError::new_err(format!(
-                        "ref {refname} does not exist, expected {}",
-                        exp_oid.to_hex()
-                    )))
-                }
-            }
-        }
-
-        let old_for_log = current.unwrap_or_else(|| crate::refs::zero_like(&new_oid));
-        py.allow_threads(|| grit_lib::refs::write_ref(&git_dir, &refname, &new_oid))
-            .map_err(map_err)?;
+        let old_for_log = if create || expected_old.is_some() {
+            // AIDEV-NOTE: Atomic path — create-only or compare-and-swap via a held lockfile.
+            let exp = expected_old.as_ref().map(|o| o.inner());
+            let prev = py
+                .allow_threads(|| {
+                    crate::refs::atomic_cas_write(
+                        &git_dir,
+                        &refname,
+                        &new_oid,
+                        exp.as_ref(),
+                        create,
+                    )
+                })
+                .map_err(crate::refs::cas_to_pyerr)?;
+            prev.unwrap_or_else(|| crate::refs::zero_like(&new_oid))
+        } else {
+            // Plain overwrite (plumbing-faithful, unchanged): grit's write_ref locks atomically.
+            let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
+            py.allow_threads(|| grit_lib::refs::write_ref(&git_dir, &refname, &new_oid))
+                .map_err(map_err)?;
+            current.unwrap_or_else(|| crate::refs::zero_like(&new_oid))
+        };
         if let Some((ident, msg)) = reflog {
             // force_create=true: message= is an explicit opt-in, so guarantee the entry rather
             // than depending on grit-lib's core.logAllRefUpdates auto-create default.
@@ -536,26 +528,6 @@ impl Repository {
         let reflog = reflog_args(message, signer.as_deref())?;
         let current = py.allow_threads(|| crate::refs::read_current_oid(&git_dir, &refname));
 
-        if let Some(exp) = &expected_old {
-            let exp_oid = exp.inner();
-            match &current {
-                Some(cur) if *cur == exp_oid => {}
-                Some(cur) => {
-                    return Err(crate::error::RefMismatchError::new_err(format!(
-                        "ref {refname} is {}, expected {}",
-                        cur.to_hex(),
-                        exp_oid.to_hex()
-                    )))
-                }
-                None => {
-                    return Err(crate::error::RefMismatchError::new_err(format!(
-                        "ref {refname} does not exist, expected {}",
-                        exp_oid.to_hex()
-                    )))
-                }
-            }
-        }
-
         if let (Some((ident, msg)), Some(cur)) = (&reflog, &current) {
             let zero = crate::refs::zero_like(cur);
             // force_create=true: explicit opt-in via message= (see update_ref).
@@ -565,8 +537,19 @@ impl Repository {
             .map_err(map_err)?;
         }
 
-        py.allow_threads(|| grit_lib::refs::delete_ref(&git_dir, &refname))
-            .map_err(map_err)
+        // AIDEV-NOTE: CAS delete goes through the atomic held-lock path; an unconditional delete
+        // uses grit's delete_ref directly. (The reflog-before-delete block above already ran when
+        // requested.)
+        match &expected_old {
+            Some(exp) => {
+                let exp_oid = exp.inner();
+                py.allow_threads(|| crate::refs::atomic_cas_delete(&git_dir, &refname, &exp_oid))
+                    .map_err(crate::refs::cas_to_pyerr)
+            }
+            None => py
+                .allow_threads(|| grit_lib::refs::delete_ref(&git_dir, &refname))
+                .map_err(map_err),
+        }
     }
 
     // AIDEV-NOTE: Explicitly append a reflog entry: <old> <new> <identity>\t<message>. signer is
