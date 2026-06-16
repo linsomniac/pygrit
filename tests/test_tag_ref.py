@@ -77,3 +77,16 @@ def test_annotated_tag_force_moves(tmp_path, git_env):
         b"v3", c1, pylibgrit.ObjectKind.COMMIT, message=b"m\n", tagger=sig, force=True
     )
     assert _git(work, git_env, "rev-parse", "refs/tags/v3") == tag_oid.hex
+
+
+@pytest.mark.parametrize("bad", [b"v 1", b"../evil", b"bad..name", b""])
+def test_tag_name_validation_rejects(tmp_path, git_env, bad):
+    import pylibgrit
+
+    repo, work, c1, sig = _repo_one_commit(tmp_path, git_env)
+    with pytest.raises(pylibgrit.RepositoryError):
+        repo.create_lightweight_tag(bad, c1)
+    with pytest.raises(pylibgrit.RepositoryError):
+        repo.create_annotated_tag(
+            bad, c1, pylibgrit.ObjectKind.COMMIT, message=b"m\n", tagger=sig
+        )
