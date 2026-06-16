@@ -31,31 +31,7 @@ def test_write_to_worktree_bare_raises(tmp_path):
         repo.write_to_worktree(b"x.txt", b"y", 0o100644)
 
 
-def _commit_one_file(work, git_env, path, content):
-    subprocess.run(
-        ["git", "init", "-q", "-b", "main", str(work)], env=git_env, check=True
-    )
-    (work / path).parent.mkdir(parents=True, exist_ok=True)
-    (work / path).write_bytes(content)
-    subprocess.run(["git", "add", "-A"], cwd=work, env=git_env, check=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "c"], cwd=work, env=git_env, check=True
-    )
-    tree = (
-        subprocess.run(
-            ["git", "rev-parse", "HEAD^{tree}"],
-            cwd=work,
-            env=git_env,
-            stdout=subprocess.PIPE,
-            check=True,
-        )
-        .stdout.decode()
-        .strip()
-    )
-    return tree
-
-
-def test_checkout_tree_materializes_files(tmp_path, git_env):
+def test_checkout_tree_materializes_files(tmp_path):
     import pylibgrit
 
     dst = tmp_path / "dst"
@@ -129,3 +105,42 @@ def test_checkout_tree_bare_raises(tmp_path):
     tree = idx.write_tree()
     with pytest.raises(pylibgrit.RepositoryError):
         repo.checkout_tree(tree)
+
+
+def test_checkout_tree_parent_component_clobber(tmp_path):
+    import pylibgrit
+
+    dst = tmp_path / "dst"
+    repo = pylibgrit.Repository.init(str(dst))
+    # A regular file sits where the tree needs a directory "D".
+    (dst / "D").write_bytes(b"i am a file\n")
+    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    idx = repo.index()
+    idx.add(b"D/f.txt", blob, 0o100644)
+    tree = idx.write_tree()
+    with pytest.raises(FileExistsError):
+        repo.checkout_tree(tree)
+    assert (dst / "D").read_bytes() == b"i am a file\n"  # untouched without force
+    repo.checkout_tree(tree, force=True)
+    assert (dst / "D" / "f.txt").read_bytes() == b"alpha\n"
+
+
+def test_checkout_tree_skips_gitlink(tmp_path):
+    import pylibgrit
+
+    dst = tmp_path / "dst"
+    repo = pylibgrit.Repository.init(str(dst))
+    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    # A gitlink (submodule) entry alongside a normal blob.
+    fake_commit = repo.odb.write(
+        pylibgrit.ObjectKind.COMMIT,
+        b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor a <a@x> 0 +0000\n"
+        b"committer a <a@x> 0 +0000\n\nm\n",
+    )
+    idx = repo.index()
+    idx.add(b"a.txt", blob, 0o100644)
+    idx.add(b"sub", fake_commit, 0o160000)
+    tree = idx.write_tree()
+    repo.checkout_tree(tree)
+    assert (dst / "a.txt").read_bytes() == b"alpha\n"
+    assert not (dst / "sub").exists()  # gitlink skipped, nothing written

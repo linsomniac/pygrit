@@ -7,6 +7,9 @@ use pyo3::prelude::*;
 
 use crate::objects::ObjectId;
 
+// AIDEV-NOTE: A flat checkout entry: (relative path, blob oid, git mode).
+type EntryList = Vec<(String, grit_lib::objects::ObjectId, u32)>;
+
 // AIDEV-NOTE: Local error type so the whole checkout can run inside one allow_threads block
 // (no Python touched). The caller maps this to a PyErr UNDER the GIL via to_pyerr. PyErr cannot
 // be constructed without a Python token mid-flight cleanly, hence the deferred mapping.
@@ -40,7 +43,7 @@ fn collect(
     repo: &grit_lib::repo::Repository,
     tree_oid: &grit_lib::objects::ObjectId,
     prefix: &str,
-    out: &mut Vec<(String, grit_lib::objects::ObjectId, u32)>,
+    out: &mut EntryList,
 ) -> Result<(), CheckoutError> {
     let obj = repo.odb.read(tree_oid).map_err(CheckoutError::Grit)?;
     if obj.kind != grit_lib::objects::ObjectKind::Tree {
@@ -65,11 +68,12 @@ fn collect(
 // AIDEV-NOTE: Overlay checkout. Steps (all under the caller's allow_threads):
 //   1. Walk the tree into a flat (rel, oid, mode) list.
 //   2. If !force, pre-scan for any existing work-tree path that would be clobbered and FAIL
-//      before writing anything (no partial overwrite on the no-force path).
+//      before writing anything (no partial overwrite on the no-force path). The pre-scan guards
+//      BOTH leaf paths AND parent components: a file/symlink sitting where a directory must go
+//      would be silently removed by write_to_worktree's parent-dir prep, so we refuse it too.
 //   3. Write each blob via porcelain::checkout::write_to_worktree (handles symlink/exec).
 //   4. If update_index, rebuild matching index entries from the freshly-written files
 //      (entry_from_stat) and persist. Overlay semantics: we never delete entries/files.
-#[allow(clippy::type_complexity)]
 pub(crate) fn checkout_tree(
     repo: &Arc<grit_lib::repo::Repository>,
     work_tree: &Path,
@@ -77,13 +81,28 @@ pub(crate) fn checkout_tree(
     force: bool,
     update_index: bool,
 ) -> Result<(), CheckoutError> {
-    let mut entries: Vec<(String, grit_lib::objects::ObjectId, u32)> = Vec::new();
+    let mut entries: EntryList = Vec::new();
     collect(repo, tree_oid, "", &mut entries)?;
 
     if !force {
         for (rel, _, _) in &entries {
+            // Leaf: refuse to overwrite anything already at the target path.
             if std::fs::symlink_metadata(work_tree.join(rel)).is_ok() {
                 return Err(CheckoutError::Clobber(rel.clone()));
+            }
+            // Parents: a file/symlink sitting where a directory must go would be
+            // silently removed by write_to_worktree's parent-dir prep — refuse it too.
+            let mut anc = std::path::Path::new(rel.as_str());
+            while let Some(p) = anc.parent() {
+                if p.as_os_str().is_empty() {
+                    break;
+                }
+                if let Ok(m) = std::fs::symlink_metadata(work_tree.join(p)) {
+                    if !m.is_dir() {
+                        return Err(CheckoutError::Clobber(p.to_string_lossy().into_owned()));
+                    }
+                }
+                anc = p;
             }
         }
     }
