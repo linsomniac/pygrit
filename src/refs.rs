@@ -138,6 +138,7 @@ pub(crate) fn zero_like(like: &grit_lib::objects::ObjectId) -> grit_lib::objects
 pub(crate) enum CasError {
     Mismatch(String),
     Locked(String),
+    Unsupported(String),
     Grit(grit_lib::error::Error),
     Io(std::io::Error),
 }
@@ -146,6 +147,7 @@ pub(crate) fn cas_to_pyerr(e: CasError) -> pyo3::PyErr {
     match e {
         CasError::Mismatch(m) => crate::error::RefMismatchError::new_err(m),
         CasError::Locked(m) => crate::error::invalid_ref(&m),
+        CasError::Unsupported(m) => crate::error::invalid_ref(&m),
         CasError::Grit(err) => crate::error::map_err(err),
         CasError::Io(io) => match io.raw_os_error() {
             Some(errno) => pyo3::exceptions::PyOSError::new_err((errno, format!("{io}"))),
@@ -241,6 +243,16 @@ pub(crate) fn atomic_cas_write(
     expected_old: Option<&grit_lib::objects::ObjectId>,
     create_only: bool,
 ) -> Result<Option<grit_lib::objects::ObjectId>, CasError> {
+    // AIDEV-NOTE: Our held-lock protocol writes LOOSE ref files. grit's write_ref/resolve_ref
+    // dispatch to the reftable backend on reftable repos, so a loose write there is a SILENT
+    // lost update (the reftable reader never sees it). Reftable is out of scope for Phase B
+    // (init only creates "files" repos); refuse rather than corrupt. open() can still attach to
+    // an externally-created reftable repo, hence this guard.
+    if grit_lib::reftable::is_reftable_repo(git_dir) {
+        return Err(CasError::Unsupported(format!(
+            "atomic ref CAS/create is not supported on reftable repositories (ref '{refname}')"
+        )));
+    }
     let path = loose_ref_path(git_dir, refname);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(CasError::Io)?;
@@ -284,6 +296,16 @@ pub(crate) fn atomic_cas_delete(
     refname: &str,
     expected_old: &grit_lib::objects::ObjectId,
 ) -> Result<(), CasError> {
+    // AIDEV-NOTE: Our held-lock protocol writes LOOSE ref files. grit's write_ref/resolve_ref
+    // dispatch to the reftable backend on reftable repos, so a loose write there is a SILENT
+    // lost update (the reftable reader never sees it). Reftable is out of scope for Phase B
+    // (init only creates "files" repos); refuse rather than corrupt. open() can still attach to
+    // an externally-created reftable repo, hence this guard.
+    if grit_lib::reftable::is_reftable_repo(git_dir) {
+        return Err(CasError::Unsupported(format!(
+            "atomic ref CAS/create is not supported on reftable repositories (ref '{refname}')"
+        )));
+    }
     let path = loose_ref_path(git_dir, refname);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(CasError::Io)?;

@@ -57,6 +57,8 @@ def test_preexisting_lock_is_contention_error(tmp_path):
     lock.write_text("")
     with pytest.raises(pylibgrit.RepositoryError):
         repo.update_ref(b"refs/heads/main", c2, expected_old=c1)
+    # Our failed attempt left the foreign lock untouched (didn't rename it away).
+    assert lock.exists()
     lock.unlink()
     assert not lock.exists()
 
@@ -98,6 +100,49 @@ def test_cas_delete_loose(tmp_path):
     repo.delete_ref(b"refs/tags/v1", expected_old=c1)
     with pytest.raises(pylibgrit.GritError):
         repo.resolve("refs/tags/v1")
+
+
+def test_cas_delete_packed_ref(tmp_path):
+    import pylibgrit
+    import subprocess
+
+    repo, c1, c2 = _repo_with_main(tmp_path)
+    repo.update_ref(b"refs/tags/p1", c1, create=True)
+    git_dir = tmp_path / "r" / ".git"
+    # Pack the loose ref so it lives ONLY in packed-refs.
+    subprocess.run(["git", "pack-refs", "--all"], cwd=git_dir, check=True)
+    # CAS-delete must still work (delegates packed removal to grit's delete_ref).
+    repo.delete_ref(b"refs/tags/p1", expected_old=c1)
+    with pytest.raises(pylibgrit.GritError):
+        repo.resolve("refs/tags/p1")
+
+
+def test_cas_refused_on_reftable_repo(tmp_path):
+    import pylibgrit
+    import subprocess
+
+    # Create an external reftable-backend repo via git (>= 2.45); skip if unsupported.
+    rt = tmp_path / "rt"
+    res = subprocess.run(
+        ["git", "init", "--ref-format=reftable", str(rt)],
+        capture_output=True,
+    )
+    if res.returncode != 0:
+        pytest.skip("git does not support --ref-format=reftable")
+
+    repo = pylibgrit.Repository.open(str(rt / ".git"), str(rt))
+    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    idx = repo.index()
+    idx.add(b"a.txt", blob, 0o100644)
+    tree = idx.write_tree()
+    sig = pylibgrit.Signature(b"A", b"a@x", (1700000000, 0))
+    c1 = repo.create_commit(
+        tree, parents=[], author=sig, committer=sig, message=b"c1\n"
+    )
+    # The atomic CAS/create path must REFUSE rather than write a loose file the reftable
+    # reader would ignore (a silent lost update).
+    with pytest.raises(pylibgrit.RepositoryError):
+        repo.update_ref(b"refs/heads/feature", c1, create=True)
 
 
 # AIDEV-NOTE: The rename-failure cleanup in atomic_cas_write (a rename(lock -> ref) failure must

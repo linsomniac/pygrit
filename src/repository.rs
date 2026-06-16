@@ -445,9 +445,12 @@ impl Repository {
 
     // AIDEV-NOTE: Create/move a ref. Three states (design §Ref safety): default overwrites;
     // create=True requires the ref be absent; expected_old=<oid> is compare-and-swap. create +
-    // expected_old together is a usage error. The read-compare-write is best-effort (no atomic
-    // primitive in grit-lib — see refs::read_current_oid). Ref name must be UTF-8. When message=
-    // is given (with signer=), an old->new reflog entry is appended after the write.
+    // expected_old together is a usage error. The create-only and compare-and-swap paths are now
+    // ATOMIC, going through a binding-held-lockfile protocol (crate::refs::atomic_cas_write); the
+    // plain-overwrite path stays plumbing-faithful via grit's write_ref (which locks atomically).
+    // The atomic path refuses reftable repos (loose-file CAS would be a silent lost update there).
+    // Ref name must be UTF-8. When message= is given (with signer=), an old->new reflog entry is
+    // appended after the write.
     #[pyo3(signature = (name, target, *, expected_old=None, create=false, message=None, signer=None))]
     #[allow(clippy::too_many_arguments)]
     fn update_ref(
@@ -511,9 +514,13 @@ impl Repository {
         Ok(())
     }
 
-    // AIDEV-NOTE: Delete a ref. Default deletes unconditionally; expected_old=<oid> is a
-    // compare-and-swap delete (best-effort, same caveat as update_ref). When message=/signer= are
-    // given and the ref existed, an old->zero reflog entry is appended before the delete.
+    // AIDEV-NOTE: Delete a ref. Default deletes unconditionally via grit's delete_ref
+    // (plumbing-faithful). expected_old=<oid> is an ATOMIC compare-and-swap delete via the
+    // binding-held-lockfile protocol (crate::refs::atomic_cas_delete), which refuses reftable
+    // repos; its loose unlink is atomic, but a ref that ALSO has a packed-refs entry delegates the
+    // packed removal to grit's delete_ref after the verify (a small documented residual window for
+    // the packed case). When message=/signer= are given and the ref existed, an old->zero reflog
+    // entry is appended before the delete.
     #[pyo3(signature = (name, *, expected_old=None, message=None, signer=None))]
     fn delete_ref(
         &self,
