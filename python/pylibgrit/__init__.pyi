@@ -367,6 +367,20 @@ class Repository:
         tagger: Signature | None = None,
         tagger_raw: bytes | None = None,
     ) -> ObjectId: ...
+    def create_lightweight_tag(
+        self, name: bytes, target: ObjectId, *, force: bool = False
+    ) -> None: ...
+    def create_annotated_tag(
+        self,
+        name: bytes,
+        target: ObjectId,
+        target_kind: ObjectKind,
+        *,
+        message: bytes,
+        tagger: Signature | None = None,
+        tagger_raw: bytes | None = None,
+        force: bool = False,
+    ) -> ObjectId: ...
     def update_ref(
         self,
         name: bytes,

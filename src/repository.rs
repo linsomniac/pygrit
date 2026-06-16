@@ -968,6 +968,54 @@ impl Repository {
     ) -> PyResult<()> {
         crate::checkout::checkout_tree_method(&self.inner, py, tree, force, update_index)
     }
+
+    // AIDEV-NOTE: Lightweight tag = a plain ref refs/tags/<name> -> target oid. Atomic create-only by
+    // default (force=False); force=True overwrites (moves the tag). No tag object is created. Uses the
+    // held-lock atomic_cas_write: create_only=!force gives create-only when force is false, and an
+    // unconditional atomic overwrite when force is true.
+    #[pyo3(signature = (name, target, *, force=false))]
+    fn create_lightweight_tag(
+        &self,
+        py: Python<'_>,
+        name: Vec<u8>,
+        target: &crate::objects::ObjectId,
+        force: bool,
+    ) -> PyResult<()> {
+        let refname = tag_refname(&name)?;
+        let git_dir = self.inner.git_dir.clone();
+        let new_oid = target.inner();
+        py.allow_threads(|| {
+            crate::refs::atomic_cas_write(&git_dir, &refname, &new_oid, None, !force)
+        })
+        .map_err(crate::refs::cas_to_pyerr)?;
+        Ok(())
+    }
+
+    // AIDEV-NOTE: Annotated tag = create the tag OBJECT (via create_tag) then point refs/tags/<name>
+    // at it. Atomic create-only unless force=True. Returns the tag-object oid. We validate the ref
+    // name up front so a bad tag name fails before the object is written.
+    #[pyo3(signature = (name, target, target_kind, *, message, tagger=None, tagger_raw=None, force=false))]
+    #[allow(clippy::too_many_arguments)]
+    fn create_annotated_tag(
+        &self,
+        py: Python<'_>,
+        name: Vec<u8>,
+        target: &crate::objects::ObjectId,
+        target_kind: &Bound<'_, PyAny>,
+        message: Vec<u8>,
+        tagger: Option<PyRef<'_, crate::objects::Signature>>,
+        tagger_raw: Option<Vec<u8>>,
+        force: bool,
+    ) -> PyResult<crate::objects::ObjectId> {
+        let refname = tag_refname(&name)?;
+        let tag_oid =
+            self.create_tag(py, target, target_kind, name, message, tagger, tagger_raw)?;
+        let git_dir = self.inner.git_dir.clone();
+        let oid = tag_oid.inner();
+        py.allow_threads(|| crate::refs::atomic_cas_write(&git_dir, &refname, &oid, None, !force))
+            .map_err(crate::refs::cas_to_pyerr)?;
+        Ok(tag_oid)
+    }
 }
 
 impl Repository {
@@ -1100,6 +1148,14 @@ pub(crate) fn read_blob_bytes(
         return Ok(format!("Subproject commit {}\n", oid.to_hex()).into_bytes());
     }
     Ok(obj.data)
+}
+
+// AIDEV-NOTE: Build and validate refs/tags/<name>. Reuses validate_ref_name (UTF-8 + git ref
+// format), so e.g. a name with spaces or ".." is rejected before any write.
+fn tag_refname(name: &[u8]) -> PyResult<String> {
+    let mut full = b"refs/tags/".to_vec();
+    full.extend_from_slice(name);
+    validate_ref_name(&full)
 }
 
 // AIDEV-NOTE: Validate a ref name before handing it to grit-lib, which joins it to the git dir
