@@ -727,6 +727,31 @@ impl Repository {
             .map_err(map_err)?;
         Ok(crate::objects::ObjectId::from_inner(oid))
     }
+
+    // AIDEV-NOTE: Low-level single-file working-tree write (escape hatch under checkout_tree).
+    // Wraps porcelain::checkout::write_to_worktree, which ALWAYS overwrites and natively handles
+    // symlinks (mode 0o120000) and the exec bit (mode 0o100755). Requires a non-bare repo with a
+    // work tree; rel_path must be a clean relative path (validate_index_path) and UTF-8 (grit's
+    // primitive takes &str).
+    fn write_to_worktree(
+        &self,
+        py: Python<'_>,
+        rel_path: Vec<u8>,
+        data: Vec<u8>,
+        mode: u32,
+    ) -> PyResult<()> {
+        crate::index::validate_index_path(&rel_path)?;
+        let rel = std::str::from_utf8(&rel_path)
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("rel_path must be valid UTF-8"))?;
+        let work_tree = self.inner.work_tree.clone().ok_or_else(|| {
+            crate::error::invalid_ref("cannot write to a bare repository (no work tree)")
+        })?;
+        let rel_owned = rel.to_owned();
+        py.allow_threads(|| {
+            grit_lib::porcelain::checkout::write_to_worktree(&work_tree, &rel_owned, &data, mode)
+        })
+        .map_err(map_err)
+    }
 }
 
 impl Repository {

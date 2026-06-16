@@ -11,7 +11,7 @@ use crate::objects::ObjectId;
 // AIDEV-NOTE: grit-lib joins index/tree paths directly, so a leading '/' triggers infinite
 // recursion in write_tree (stack overflow) and '..'/absolute components escape the worktree.
 // Reject anything that isn't a clean relative Git path before it can reach grit-lib.
-fn validate_index_path(path: &[u8]) -> PyResult<()> {
+pub(crate) fn validate_index_path(path: &[u8]) -> PyResult<()> {
     if path.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "index path must not be empty",
