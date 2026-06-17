@@ -43,6 +43,28 @@ def test_clone_writes_origin_config(git_daemon, tmp_path) -> None:
     assert fetch == "+refs/heads/*:refs/remotes/origin/*"
 
 
+def test_clone_writes_branch_upstream(git_daemon, tmp_path) -> None:
+    # `git clone` records the checked-out branch's upstream so `git pull`/`push` work.
+    ours = tmp_path / "ours"
+    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    remote = run_git(ours, "config", "branch.main.remote").decode().strip()
+    merge = run_git(ours, "config", "branch.main.merge").decode().strip()
+    assert remote == "origin"
+    assert merge == "refs/heads/main"
+
+
+def test_clone_branch_override_strips_refs_heads_prefix(git_daemon, tmp_path) -> None:
+    # A fully-qualified branch= ("refs/heads/main") resolves the same as the short name.
+    ours = tmp_path / "ours"
+    repo = pylibgrit.Repository.clone(
+        git_daemon.repo_url, ours, branch="refs/heads/main"
+    )
+    head = repo.head()
+    assert head.is_symbolic
+    assert head.symbolic_target == b"refs/heads/main"
+    assert _all_refs(ours).get("refs/heads/main") == git_daemon.head_oid
+
+
 def test_clone_head_is_on_branch(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
     repo = pylibgrit.Repository.clone(git_daemon.repo_url, ours)
