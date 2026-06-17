@@ -14,8 +14,7 @@ local repository, and clone. grit-lib has **no clone porcelain** — the binding
 `init + fetch + checkout` itself.
 
 **In scope (read-path):** `ls_remote`, `fetch`, `clone`; transports **git://** and **https**
-(`http-ureq` bundled by default); credentials (explicit + URL userinfo + git credential helpers);
-an optional Python progress sink.
+(`http-ureq` bundled by default); credentials (explicit + URL userinfo + git credential helpers).
 
 **Deferred (explicit non-goals):**
 - **push / `git-receive-pack`** → Phase D (receive-pack, pack-building, force/lease, atomic).
@@ -33,7 +32,7 @@ an optional Python progress sink.
 | Transports | **git://** + **https**; ssh deferred. |
 | Packaging | `http-ureq` **bundled by default** (ureq + rustls, statically linked). |
 | Auth | explicit `username`/`password` **and** URL userinfo **and** git credential helpers. |
-| Progress | optional **`bytes` callback** (`progress(chunk: bytes)`, bridging `grit_lib::fetch::Progress`), in v1. |
+| Progress | **not exposed** — grit-lib 0.4.1 hard-codes `no-progress` in its fetch request, so a callback can never fire; deferred until a grit-lib bump makes progress available (§6, §8). |
 | Shallow | deferred. |
 | Clone fidelity | worktree clone only; write git-faithful `[remote "origin"]` config + `refs/remotes/origin/*` tracking refs. Bare/mirror clone deferred. |
 | `ls_remote` impl | built from the **v0/v1 ref advertisement** (`Connection::advertised_refs`), not grit's local-only `ls_remote`. |
@@ -61,7 +60,6 @@ Repository.clone(
     username: str | None = None,
     password: str | None = None,
     use_credential_helpers: bool = True,
-    progress: object | None = None,
 ) -> Repository
 
 # Instance method on an already-open repository.
@@ -73,7 +71,6 @@ repo.fetch(
     username: str | None = None,
     password: str | None = None,
     use_credential_helpers: bool = True,
-    progress: object | None = None,
 ) -> FetchReport
 ```
 
@@ -98,20 +95,15 @@ repo.fetch(
 - **OIDs:** `ObjectId` objects (as everywhere else in the binding), via `ObjectId::from_inner`.
 - **`tags`** string maps to `grit_lib::transfer::TagMode` (`none|following|all`; default `following`).
 
-### Progress callback
+### Progress (not exposed in v1)
 
-The progress trait that `fetch_remote`/`http_fetch` accept is **`grit_lib::fetch::Progress`**, which
-has a **single** method `fn message(&mut self, bytes: &[u8])` — it receives the raw side-band-2
-progress stream (the bytes git renders as `remote: …` lines). So `progress=` is an optional
-**callable** invoked once per side-band-2 chunk:
-
-```python
-progress: Callable[[bytes], None] | None = None
-```
-
-`None` → grit's `NoProgress` (no calls). Raw `bytes` are passed (lossless; may contain `\r`); the
-caller decodes if it wants text. (grit's richer `progress::ProgressSink` with start/inc/set/finish is
-a *different* trait the fetch entry points do not use, so structured counters are not available.)
+There is **no `progress=` parameter**. The only progress hook grit's fetch entry points offer is
+`grit_lib::fetch::Progress::message(&mut self, &[u8])`, which delivers the remote's side-band channel-2
+stream — but grit-lib 0.4.1 unconditionally sends `no-progress` in its upload-pack request
+(`fetch.rs:316` for v0/v1, `fetch.rs:920` for v2), so the server emits nothing on channel 2 and the
+hook can never fire. Exposing a callback that silently never runs would be a misleading dead knob, so
+the fetch/transfer always passes `grit_lib::fetch::NoProgress`. Revisit when a grit-lib version makes
+progress available (§8).
 
 ---
 
@@ -125,14 +117,14 @@ designed for it, and both unify into one `FetchReport`.
 - **`git://…`** → `grit_lib::transport::GitDaemonTransport::new()`.
   - `ls_remote`: `.connect(url, Service::UploadPack, ConnectOptions{ protocol_version: 1, .. })`,
     then read `conn.advertised_refs()` + `conn.head_symref()`. No objects transferred.
-  - `fetch`: `.connect(url, UploadPack, ..)` → `grit_lib::fetch::fetch_remote(git_dir, &mut conn, &opts, progress)`.
+  - `fetch`: `.connect(url, UploadPack, ..)` → `grit_lib::fetch::fetch_remote(git_dir, &mut conn, &opts, &mut NoProgress)`.
     Both `fetch_remote` (git://) and `http_fetch` (https) **write the New/FastForward/Forced tracking
     refs and prune internally** (and unpack objects); the binding does NO ref application — it maps
     the returned `FetchOutcome` to a `FetchReport` (`FETCH_HEAD` is not written; see §8).
 - **`https://…` / `http://…`** → build a `UreqHttpClient` (with credentials, §4).
   - `ls_remote`: `grit_lib::transport::http::SmartHttpTransport::new(client).connect(url, UploadPack, v1)`
     → read the advertisement as above.
-  - `fetch`: `grit_lib::transport::http::http_fetch(&client, git_dir, url, &opts, progress)`
+  - `fetch`: `grit_lib::transport::http::http_fetch(&client, git_dir, url, &opts, &mut NoProgress)`
     — **self-applies** refs and unpacks objects; the binding maps its `FetchOutcome` to `FetchReport`.
 - **Unknown scheme** → `NetworkError` ("unsupported transport: <scheme>; supported: git, http, https").
 
@@ -164,8 +156,7 @@ Houses the three Python entry points and the `RemoteRef` / `RefUpdate` / `FetchR
 | File | Responsibility |
 | --- | --- |
 | `src/net_transport.rs` | scheme parse/dispatch; construct `Box<dyn Connection>` (git://) or `UreqHttpClient` (https); shared `FetchOptions` builder. |
-| `src/remote.rs` | `ls_remote`/`fetch`/`clone` entry points; `RemoteRef`/`RefUpdate`/`FetchReport` pyclasses; ref-update application for the git:// path. |
-| `src/net_progress.rs` | `PyProgress`: wraps an optional `Py<PyAny>` callable, implements `grit_lib::fetch::Progress` by calling it with each side-band-2 chunk (GIL re-acquired per chunk; see §6). |
+| `src/remote.rs` | `ls_remote`/`fetch`/`clone` entry points; `RemoteRef`/`RefUpdate`/`FetchReport` pyclasses. |
 | `src/net_credentials.rs` | `StaticCredentialProvider` (explicit/userinfo creds) chained to `grit_lib::credentials::HelperCredentialProvider`. |
 
 `src/lib.rs` registers `Repository.clone`/`fetch`, the module-level `ls_remote`, the three value
@@ -210,17 +201,14 @@ Object/ref/repo errors retain their current mappings.
 
 ---
 
-## 6. Progress bridge (GIL & threading)
+## 6. GIL & threading (transfers)
 
-`http_fetch` / `fetch_remote` take `&mut dyn grit_lib::fetch::Progress` (one method,
-`message(&mut self, bytes: &[u8])`). `PyProgress` wraps an optional `Py<PyAny>` callable. The blocking
-transfer **always** runs under `py.allow_threads` (GIL released for network I/O); the git:// connection
-— whose `Box<dyn Connection>` is `!Send` — is constructed *inside* that closure so it never crosses the
-boundary. When a chunk arrives, `PyProgress::message` re-acquires the GIL via `Python::with_gil`, calls
-the callable with the chunk as `bytes`, then releases it — so a callback never holds the GIL across the
-transfer. A Python exception raised by the callable is **captured** in `PyProgress` (grit's
-`Progress::message` is infallible and cannot unwind through the FFI boundary) and re-raised by the
-caller after the transfer returns; the fetch is then treated as failed.
+The blocking network transfer (`fetch_remote` / `http_fetch`) runs under `py.allow_threads` (GIL
+released for I/O). The git:// connection — whose `Box<dyn Connection>` is `!Send` — is constructed
+*inside* that closure so it never crosses the boundary; the https path passes the `UreqHttpClient`
+(`Send + Sync`) in. Progress is **not** bridged to Python (see §3 "Progress (not exposed)"): grit-lib
+0.4.1 forces `no-progress`, so a `&mut grit_lib::fetch::NoProgress` is passed and the GIL stays
+released for the whole transfer with no per-chunk re-acquisition.
 
 ---
 
@@ -241,8 +229,7 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
   `UreqHttpClient`, and the credential provider (401 → retry with creds → success; wrong creds →
   `AuthenticationError`). Skip-if-unavailable, mirroring the existing `git ≥ 2.38` gate.
 - **Unit:** scheme dispatch + unknown-scheme `NetworkError`; URL-userinfo parsing/stripping; refspec
-  defaulting; progress-sink bridging (a recording sink observes `start/inc/finish`); `origin` config
-  contents after clone.
+  defaulting; `origin` config contents after clone.
 - All **7 existing gates** stay green (`pytest`, `mypy python tests`,
   `python -m mypy.stubtest pylibgrit` with **no allowlist**, `cargo fmt --check`,
   `cargo clippy --all-targets --locked -- -D warnings`, `ruff format --check`, `ruff check`).
@@ -259,9 +246,11 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
 - **`FETCH_HEAD` not written in v1.** `repo.fetch()` updates tracking refs + objects but does not
   write a `FETCH_HEAD` file (documented; clone and tracking-ref updates do not depend on it). The
   parity test compares refs/objects/HEAD, not `FETCH_HEAD`.
-- **Progress is side-band-2 bytes only** (a single `message(bytes)` callback; no structured
-  object/byte counters). The transfer runs with the GIL released; the callback re-acquires it per
-  chunk (§6). A tiny transfer may emit zero progress chunks (server-dependent).
+- **No transfer progress.** grit-lib 0.4.1 unconditionally sends `no-progress` in its upload-pack
+  request (`fetch.rs:316` v0/v1, `fetch.rs:920` v2), so the server emits no side-band channel-2
+  progress and grit's `Progress::message` hook never fires (verified empirically: 2→500 objects, 0
+  chunks). pylibgrit therefore exposes **no `progress=` parameter** and passes `NoProgress`. A progress
+  callback can be added once a grit-lib version stops forcing `no-progress`.
 - **`ls_remote` omits peeled tag `^{}` lines** (grit's `advertised_refs` excludes them), so an
   annotated tag appears once (its tag-object oid); `git ls-remote` additionally prints the peeled
   `refs/tags/x^{}` row. Oracle comparisons strip `^{}` rows.
@@ -290,8 +279,8 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
   `HelperCredentialProvider::new(config: ConfigSet)`; `CredentialProvider::{fill, approve, reject}`.
 - `grit_lib::transfer::{FetchOptions (Default), FetchOutcome, RefUpdate, UpdateMode, TagMode}`;
   clone refspec `"+refs/heads/*:refs/remotes/origin/*"`.
-- Progress trait: `grit_lib::fetch::Progress` (single method `message(&mut self, &[u8])`) +
-  `grit_lib::fetch::NoProgress` (the no-op impl).
+- Progress: `grit_lib::fetch::NoProgress` (the no-op impl) is always passed — grit-lib 0.4.1 forces
+  `no-progress`, so the `grit_lib::fetch::Progress` hook is unreachable and not bridged (§6, §8).
 - Config writer: `grit_lib::config::ConfigFile::from_path(&Path, ConfigScope) -> Result<Option<Self>>`,
   then `set(key, value)` / `add_value(key, value)` / `write()`; section keys are dotted
   (`remote.origin.url`); scope `ConfigScope::Local`.
