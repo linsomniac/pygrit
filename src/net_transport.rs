@@ -64,3 +64,16 @@ pub(crate) fn split_userinfo(url: &str) -> (String, Option<(String, Option<Strin
     };
     (format!("{scheme}://{host}{tail}"), Some(creds))
 }
+
+// AIDEV-NOTE: Connect a git:// service for PUSH (git-receive-pack). Forces protocol v0/v1
+// (`protocol_version: 0`) because grit's push rejects v2. Like `git_connect`, the returned
+// `Box<dyn Connection>` is `!Send` — construct + consume it inside one `allow_threads` closure.
+pub(crate) fn git_connect_receive(
+    url: &str,
+) -> Result<Box<dyn Connection>, grit_lib::error::Error> {
+    let opts = ConnectOptions {
+        protocol_version: 0,
+        server_options: Vec::new(),
+    };
+    GitDaemonTransport::new().connect(url, Service::ReceivePack, &opts)
+}

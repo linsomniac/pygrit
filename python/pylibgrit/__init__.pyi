@@ -9,7 +9,7 @@ the Rust source (src/*.rs) and `__init__.py`. Verified against the runtime with
 
 import enum
 import os
-from typing import Iterator, final
+from typing import Callable, Iterator, final
 
 __all__ = [
     "AuthenticationError",
@@ -31,6 +31,9 @@ __all__ = [
     "ObjectKind",
     "ObjectNotFoundError",
     "Odb",
+    "PushRefResult",
+    "PushReport",
+    "PushSpec",
     "Reference",
     "RefMismatchError",
     "RefUpdate",
@@ -259,6 +262,57 @@ class FetchReport:
     @property
     def default_branch(self) -> bytes | None: ...
 
+@final
+class PushSpec:
+    def __new__(
+        cls,
+        dst: bytes,
+        *,
+        src: ObjectId | None = None,
+        force: bool = False,
+        delete: bool = False,
+        expected_old: ObjectId | None = None,
+        expect_absent: bool = False,
+    ) -> PushSpec: ...
+    @property
+    def dst(self) -> bytes: ...
+    @property
+    def src(self) -> ObjectId | None: ...
+    @property
+    def force(self) -> bool: ...
+    @property
+    def delete(self) -> bool: ...
+    @property
+    def expected_old(self) -> ObjectId | None: ...
+    @property
+    def expect_absent(self) -> bool: ...
+
+@final
+class PushRefResult:
+    @property
+    def local_ref(self) -> bytes | None: ...
+    @property
+    def remote_ref(self) -> bytes: ...
+    @property
+    def old_oid(self) -> ObjectId | None: ...
+    @property
+    def new_oid(self) -> ObjectId | None: ...
+    @property
+    def forced(self) -> bool: ...
+    @property
+    def deletion(self) -> bool: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def message(self) -> str | None: ...
+
+@final
+class PushReport:
+    @property
+    def results(self) -> list[PushRefResult]: ...
+    @property
+    def ok(self) -> bool: ...
+
 # --- Object database ------------------------------------------------------
 
 @final
@@ -479,6 +533,20 @@ class Repository:
         password: str | None = None,
         use_credential_helpers: bool = True,
     ) -> FetchReport: ...
+    def push(
+        self,
+        url: str,
+        refspecs: list[str | PushSpec],
+        *,
+        force: bool = False,
+        atomic: bool = False,
+        dry_run: bool = False,
+        push_options: list[str] | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        use_credential_helpers: bool = True,
+        progress: Callable[[bytes], None] | None = None,
+    ) -> PushReport: ...
 
 # --- Networking (read path) -----------------------------------------------
 

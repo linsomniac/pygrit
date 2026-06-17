@@ -1030,6 +1030,44 @@ impl Repository {
         )
     }
 
+    // AIDEV-NOTE: Push to `url` (== `git push`). refspecs is a list of git-style strings ("main",
+    // "+a:b", ":refs/heads/old" delete) and/or structured PushSpec objects (force-with-lease, raw
+    // oids). Rejections come back as PushReport data (per-ref status); only transport/auth/protocol
+    // failures raise. progress= receives the remote's side-band-2 (hook/diagnostic) output.
+    #[pyo3(signature = (url, refspecs, *, force=false, atomic=false, dry_run=false,
+                        push_options=None, username=None, password=None,
+                        use_credential_helpers=true, progress=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn push(
+        &self,
+        py: Python<'_>,
+        url: String,
+        refspecs: Vec<Py<PyAny>>,
+        force: bool,
+        atomic: bool,
+        dry_run: bool,
+        push_options: Option<Vec<String>>,
+        username: Option<String>,
+        password: Option<String>,
+        use_credential_helpers: bool,
+        progress: Option<Py<PyAny>>,
+    ) -> PyResult<crate::push::PushReport> {
+        crate::push::push_method(
+            py,
+            &self.inner,
+            url,
+            refspecs,
+            force,
+            atomic,
+            dry_run,
+            push_options,
+            username,
+            password,
+            use_credential_helpers,
+            progress,
+        )
+    }
+
     // AIDEV-NOTE: Lightweight tag = a plain ref refs/tags/<name> -> target oid. Atomic create-only by
     // default (force=False); force=True overwrites (moves the tag). No tag object is created. Uses the
     // held-lock atomic_cas_write: create_only=!force gives create-only when force is false, and an

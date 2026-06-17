@@ -122,7 +122,9 @@ pub fn invalid_ref(msg: &str) -> PyErr {
 pub fn net_map_err(e: grit_lib::error::Error) -> PyErr {
     use grit_lib::error::Error;
     match e {
-        Error::Message(_) | Error::Io(_) => NetworkError::new_err(format!("{e}")),
+        Error::Message(_) | Error::Io(_) | Error::PushOptionsUnsupported => {
+            NetworkError::new_err(format!("{e}"))
+        }
         other => map_err(other),
     }
 }

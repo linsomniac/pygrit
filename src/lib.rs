@@ -15,9 +15,11 @@ mod error;
 mod index;
 mod merge;
 mod net_credentials;
+mod net_progress;
 mod net_transport;
 mod objects;
 mod odb;
+mod push;
 mod refs;
 mod remote;
 mod repository;
@@ -61,6 +63,9 @@ fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<remote::RemoteRef>()?;
     m.add_class::<remote::RefUpdate>()?;
     m.add_class::<remote::FetchReport>()?;
+    m.add_class::<push::PushSpec>()?;
+    m.add_class::<push::PushRefResult>()?;
+    m.add_class::<push::PushReport>()?;
     m.add_function(wrap_pyfunction!(remote::ls_remote, m)?)?;
     Ok(())
 }
