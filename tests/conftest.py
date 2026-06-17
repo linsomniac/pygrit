@@ -354,3 +354,28 @@ def http_push_server(
         yield ns
     finally:
         shutdown()
+
+
+# AIDEV-NOTE: Basic-auth (alice/s3cret) receive-pack smart-HTTP server + a local pusher clone. The
+# local clone is made with creds in the URL so its own origin works, but the tests push to the
+# credential-less repo_url and supply creds via the push() API (username/password kwargs, or rely on
+# the missing-creds path). The credentials are fixed/arbitrary test values, not secrets. Skips if git
+# http-backend is unavailable.
+@pytest.fixture
+def http_auth_push_server(
+    tmp_path: Path, git_env: dict[str, str]
+) -> Iterator[SimpleNamespace]:
+    """Basic-auth receive-pack smart-HTTP server + a local clone to push from."""
+    if not _git_http_backend_available(git_env):
+        pytest.skip("git http-backend unavailable")
+    ns, shutdown = _make_http_server(
+        tmp_path, git_env, auth=("alice", "s3cret"), receive_pack=True
+    )
+    local = tmp_path / "httpauthpushlocal"
+    auth_url = ns.repo_url.replace("http://", "http://alice:s3cret@")
+    _git(tmp_path, git_env, "clone", "-q", auth_url, str(local))
+    ns.local_path = local
+    try:
+        yield ns
+    finally:
+        shutdown()
