@@ -402,6 +402,7 @@ class Repository:
         username: str | None = None,
         password: str | None = None,
         use_credential_helpers: bool = True,
+        ssh_command: str | None = None,
     ) -> Repository: ...
     @property
     def git_dir(self) -> bytes: ...
@@ -532,6 +533,7 @@ class Repository:
         username: str | None = None,
         password: str | None = None,
         use_credential_helpers: bool = True,
+        ssh_command: str | None = None,
     ) -> FetchReport: ...
     def push(
         self,

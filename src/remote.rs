@@ -222,6 +222,7 @@ fn update_mode_str(m: UpdateMode) -> &'static str {
 // Progress is unconditionally NoProgress: grit-lib 0.4.1 sends `no-progress` in every upload-pack
 // request, so the Progress::message hook never fires over the network. The progress= parameter was
 // dropped from the public API to avoid a misleading dead knob.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn fetch_raw(
     py: Python<'_>,
     git_dir: &std::path::Path,
@@ -230,6 +231,7 @@ pub(crate) fn fetch_raw(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
+    ssh_command: Option<String>,
 ) -> PyResult<FetchOutcome> {
     let outcome = match classify(url)? {
         Scheme::Git => py
@@ -255,14 +257,13 @@ pub(crate) fn fetch_raw(
             })
             .map_err(net_map_err)?
         }
-        Scheme::Ssh => {
-            // AIDEV-TODO: When ssh fetch lands (Task 2), call reject_creds_for_ssh at the fetch
-            // entry points (fetch_method + clone_impl, before init) so username/password are
-            // rejected for ssh URLs.
-            return Err(net_map_err(grit_lib::error::Error::Message(
-                "ssh fetch is not yet implemented in this build".to_owned(),
-            )));
-        }
+        Scheme::Ssh => py
+            .allow_threads(|| -> Result<FetchOutcome, grit_lib::error::Error> {
+                let mut conn = ssh_connect(url, 0, ssh_command.as_deref())?;
+                let mut np = grit_lib::fetch::NoProgress;
+                grit_lib::fetch::fetch_remote(git_dir, &mut *conn, opts, &mut np)
+            })
+            .map_err(net_map_err)?,
     };
     Ok(outcome)
 }
@@ -326,7 +327,9 @@ pub(crate) fn fetch_method(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
+    ssh_command: Option<String>,
 ) -> PyResult<FetchReport> {
+    reject_creds_for_ssh(&url, &username, &password)?;
     let opts = build_fetch_options(refspecs, tags, prune)?;
     let git_dir = repo.git_dir.clone();
     let outcome = fetch_raw(
@@ -337,6 +340,7 @@ pub(crate) fn fetch_method(
         username,
         password,
         use_credential_helpers,
+        ssh_command,
     )?;
     build_report(py, outcome)
 }
@@ -391,6 +395,7 @@ fn write_branch_upstream(
 // realistic post-fetch case, where the only failure is the branch genuinely not being on the remote.
 // Bare/shallow clone are deferred (spec §1). LIMITATION: clone into a non-empty existing path RE-INITS over it
 // (init_repository has no already-exists guard) rather than refusing like `git clone` — deferred.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn clone_impl(
     py: Python<'_>,
     url: String,
@@ -399,7 +404,9 @@ pub(crate) fn clone_impl(
     username: Option<String>,
     password: Option<String>,
     use_credential_helpers: bool,
+    ssh_command: Option<String>,
 ) -> PyResult<crate::repository::Repository> {
+    reject_creds_for_ssh(&url, &username, &password)?;
     classify(&url)?; // fail fast on an unsupported scheme before touching the filesystem
 
     // 1. init a non-bare repo.
@@ -427,6 +434,7 @@ pub(crate) fn clone_impl(
         username,
         password,
         use_credential_helpers,
+        ssh_command,
     )?;
 
     // 4. resolve which branch to check out.

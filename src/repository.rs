@@ -124,7 +124,7 @@ impl Repository {
     // dropped to avoid a misleading dead knob).
     #[staticmethod]
     #[pyo3(signature = (url, path, *, branch=None, username=None, password=None,
-                        use_credential_helpers=true))]
+                        use_credential_helpers=true, ssh_command=None))]
     #[allow(clippy::too_many_arguments)]
     fn clone(
         py: Python<'_>,
@@ -134,6 +134,7 @@ impl Repository {
         username: Option<String>,
         password: Option<String>,
         use_credential_helpers: bool,
+        ssh_command: Option<String>,
     ) -> PyResult<Self> {
         let path = extract_path(path)?;
         crate::remote::clone_impl(
@@ -144,6 +145,7 @@ impl Repository {
             username,
             password,
             use_credential_helpers,
+            ssh_command,
         )
     }
 
@@ -1004,7 +1006,8 @@ impl Repository {
     // (http_fetch) self-applies. Progress is unconditionally NoProgress (grit-lib 0.4.1 forces
     // no-progress; progress= param dropped to avoid a misleading dead knob).
     #[pyo3(signature = (url, refspecs=None, *, tags="following", prune=false,
-                        username=None, password=None, use_credential_helpers=true))]
+                        username=None, password=None, use_credential_helpers=true,
+                        ssh_command=None))]
     #[allow(clippy::too_many_arguments)]
     fn fetch(
         &self,
@@ -1016,6 +1019,7 @@ impl Repository {
         username: Option<String>,
         password: Option<String>,
         use_credential_helpers: bool,
+        ssh_command: Option<String>,
     ) -> PyResult<crate::remote::FetchReport> {
         crate::remote::fetch_method(
             py,
@@ -1027,6 +1031,7 @@ impl Repository {
             username,
             password,
             use_credential_helpers,
+            ssh_command,
         )
     }
 

@@ -34,3 +34,75 @@ def test_ls_remote_ssh_rejects_credentials(ssh_server) -> None:
             username="bob",
             ssh_command=ssh_server.ssh_command,
         )
+
+
+def _commit(local, env, name: str, body: str) -> None:
+    from tests.gitlib import run_git
+
+    (local / name).write_text(body)
+    run_git(local, "add", "-A", env=env)
+    run_git(
+        local,
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@e",
+        "commit",
+        "-q",
+        "-m",
+        body.strip(),
+        env=env,
+    )
+
+
+def test_clone_over_ssh(ssh_server, tmp_path) -> None:
+    dest = tmp_path / "cloned"
+    repo = pylibgrit.Repository.clone(
+        ssh_server.repo_url, dest, ssh_command=ssh_server.ssh_command
+    )
+    assert (dest / "a.txt").read_text() == "hello\n"
+    head = repo.resolve("refs/heads/main")
+    assert head.hex == ssh_server.base_oid
+
+
+def test_fetch_over_ssh(ssh_server) -> None:
+    from tests.gitlib import run_git
+
+    _commit(ssh_server.local_path, ssh_server.env, "b.txt", "two\n")
+    run_git(ssh_server.local_path, "push", "-q", "origin", "main", env=ssh_server.env)
+    new = (
+        run_git(
+            ssh_server.server_path, "rev-parse", "refs/heads/main", env=ssh_server.env
+        )
+        .decode()
+        .strip()
+    )
+    repo = pylibgrit.Repository.open(
+        ssh_server.local_path / ".git", ssh_server.local_path
+    )
+    repo.fetch(ssh_server.repo_url, ssh_command=ssh_server.ssh_command)
+    tip = repo.resolve("refs/remotes/origin/main")
+    assert tip.hex == new
+
+
+def test_clone_over_ssh_rejects_credentials(ssh_server, tmp_path) -> None:
+    with pytest.raises(ValueError):
+        pylibgrit.Repository.clone(
+            ssh_server.repo_url,
+            tmp_path / "x",
+            password="secret",
+            ssh_command=ssh_server.ssh_command,
+        )
+    assert not (tmp_path / "x").exists()  # guard fires before init (no side effect)
+
+
+def test_fetch_over_ssh_rejects_credentials(ssh_server) -> None:
+    repo = pylibgrit.Repository.open(
+        ssh_server.local_path / ".git", ssh_server.local_path
+    )
+    with pytest.raises(ValueError):
+        repo.fetch(
+            ssh_server.repo_url,
+            username="bob",
+            ssh_command=ssh_server.ssh_command,
+        )
