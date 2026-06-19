@@ -145,3 +145,10 @@ def test_push_over_ssh_rejects_credentials(ssh_server) -> None:
             username="bob",
             ssh_command=ssh_server.ssh_command,
         )
+
+
+def test_ls_remote_ssh_git_plus_ssh(ssh_server) -> None:
+    refs = pylibgrit.ls_remote(
+        ssh_server.git_plus_ssh_url, ssh_command=ssh_server.ssh_command
+    )
+    assert any(r.name == b"refs/heads/main" for r in refs)

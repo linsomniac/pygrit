@@ -424,6 +424,7 @@ def ssh_server(tmp_path: Path, git_env: dict[str, str]) -> SimpleNamespace:
     return SimpleNamespace(
         repo_url=f"ssh://localhost{server}",
         scp_url=f"localhost:{server}",
+        git_plus_ssh_url=f"git+ssh://localhost{server}",
         ssh_command=str(shim),
         server_path=server,
         local_path=local,
