@@ -26,7 +26,7 @@ mod repository;
 mod revwalk;
 
 #[pymodule]
-fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _pygritlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     error::register(m)?;
     m.add_class::<objects::ObjectId>()?;
     m.add_class::<objects::Object>()?;
@@ -40,7 +40,7 @@ fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<index::Index>()?;
     m.add_class::<index::IndexEntry>()?;
     // AIDEV-NOTE: IndexEntryIter is an internal iterator (like TreeIter/ReferenceIter): registered
-    // on the native module but NOT exported in python/pylibgrit/__init__.py's __all__. Users get
+    // on the native module but NOT exported in python/pygritlib/__init__.py's __all__. Users get
     // one via `iter(index)`, never by constructing it directly.
     m.add_class::<index::IndexEntryIter>()?;
     m.add_class::<odb::Odb>()?;
@@ -53,11 +53,11 @@ fn _pylibgrit(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<diff::DiffEntry>()?;
     m.add_class::<diff::DiffStats>()?;
     // AIDEV-NOTE: DiffIter is an internal iterator (like TreeIter/ReferenceIter): registered
-    // on the native module but NOT exported in python/pylibgrit/__init__.py's __all__. Users get
+    // on the native module but NOT exported in python/pygritlib/__init__.py's __all__. Users get
     // one via `iter(diff)`, never by constructing it directly.
     m.add_class::<diff::DiffIter>()?;
     // AIDEV-NOTE: RevWalk is an internal iterator (like TreeIter/ReferenceIter): registered
-    // on the native module but NOT exported in python/pylibgrit/__init__.py's __all__. Users get
+    // on the native module but NOT exported in python/pygritlib/__init__.py's __all__. Users get
     // one via `repo.revwalk(start)`, never by constructing it directly.
     m.add_class::<revwalk::RevWalk>()?;
     m.add_class::<remote::RemoteRef>()?;

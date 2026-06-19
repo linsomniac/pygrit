@@ -1,14 +1,14 @@
-# pylibgrit Phase B Design — Worktree & Merge
+# pygritlib Phase B Design — Worktree & Merge
 
 **Date:** 2026-06-16
 **Type:** Design spec (drives an implementation plan)
 **Status:** Approved — ready for writing-plans
 **Phase:** B of A→B→C (Phase A "local write-core" shipped at 0.2.0; see the Phase A
-spec `docs/superpowers/specs/2026-06-14-pylibgrit-write-core-design.md` §8 roadmap)
+spec `docs/superpowers/specs/2026-06-14-pygritlib-write-core-design.md` §8 roadmap)
 
 ## Goal
 
-Extend pylibgrit from a *local object/ref write surface* (Phase A) to a *scriptable
+Extend pygritlib from a *local object/ref write surface* (Phase A) to a *scriptable
 local git working environment*: create repositories, lay a tree down into a working
 tree, three-way-merge trees and commits, record commits that advance the current branch,
 point tag refs, and harden ref compare-and-swap from best-effort to truly atomic. All
@@ -91,8 +91,8 @@ plumbing workflow in Rust with GIL release and error mapping.
 | `src/refs.rs` | extend | `atomic_cas_write` / `atomic_cas_delete` (binding-held `lock_path_for_ref` + `read_raw_ref`/`resolve_ref`); rewire `update_ref`/`delete_ref` CAS paths to use them |
 | `src/repository.rs` | extend | wire `init` (staticmethod), `checkout_tree`, `write_to_worktree`, `commit_index`, `create_lightweight_tag`, `create_annotated_tag`, `merge_base`, `merge_trees`, `merge_commits` |
 | `src/lib.rs` | extend | register the `MergeResult` pyclass |
-| `python/pylibgrit/__init__.py` | extend | re-export `MergeResult` and the new methods |
-| `python/pylibgrit/__init__.pyi` | extend | stubs for everything in §2 (kept in sync; `stubtest` gate, no allowlist) |
+| `python/pygritlib/__init__.py` | extend | re-export `MergeResult` and the new methods |
+| `python/pygritlib/__init__.pyi` | extend | stubs for everything in §2 (kept in sync; `stubtest` gate, no allowlist) |
 
 **Concurrency model (unchanged from Phase A):** `Odb` writes through `&self`; the `Index`
 inside a `MergeResult` is a binding-owned value behind a `Mutex`. Worktree and ref writes
@@ -157,7 +157,7 @@ class MergeResult:
 
 ### grit-lib primitives each method wraps
 
-| pylibgrit method | grit-lib plumbing |
+| pygritlib method | grit-lib plumbing |
 | --- | --- |
 | `Repository.init` | `repo::init_repository(path, bare, initial_branch, None, "files")` |
 | `checkout_tree` | recursively `objects::parse_tree` from `tree`; for each blob: `odb` read → `porcelain::checkout::{prepare_parent_dirs_for_checkout, write_to_worktree, apply_index_file_mode}`; gitlink skipped; optional index update via the Phase A `Index` |
@@ -175,11 +175,11 @@ class MergeResult:
 ### Lay a tree into a fresh repo and commit it
 
 ```python
-repo = pylibgrit.Repository.init("/tmp/demo", initial_branch=b"main")     # 1. init
+repo = pygritlib.Repository.init("/tmp/demo", initial_branch=b"main")     # 1. init
 blob = repo.odb.write(ObjectKind.BLOB, b"hello\n")
 idx  = repo.index()
 idx.add(b"greeting.txt", blob, mode=0o100644); idx.write()
-sig  = pylibgrit.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
+sig  = pygritlib.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
 oid  = repo.commit_index(message=b"init\n", author=sig, committer=sig)    # 2. commit (advances main)
 repo.checkout_tree(repo.commit(oid).tree)                                  # 3. materialize work tree
 ```
@@ -281,7 +281,7 @@ Phase B. All tests run in tempdirs.
 | `tests/test_tag_ref.py` | lightweight tag → `git rev-parse refs/tags/<n>` == target; annotated tag → tag object (`git cat-file -p`) + `refs/tags/<n>` points at it; `force=False` over an existing tag → `RefMismatchError`, `force=True` moves it |
 
 Quality gates stay green and identical to Phase A: `ruff format`/`check`, `mypy python tests`,
-`python -m mypy.stubtest pylibgrit` (no allowlist), `cargo fmt --check`,
+`python -m mypy.stubtest pygritlib` (no allowlist), `cargo fmt --check`,
 `cargo clippy --all-targets --locked -- -D warnings`, `pytest`.
 
 > **Oracle caveat:** `git merge-tree --write-tree` requires git ≥ 2.38. The merge tests
@@ -328,5 +328,5 @@ TreeMergeConflictPresentation}` (`src/merge_trees.rs`); `merge_file::MergeFavor`
 `refs::{lock_path_for_ref, write_ref, delete_ref, read_raw_ref, resolve_ref, append_reflog}`
 (`src/refs.rs`); `objects::{parse_tree, serialize_commit, serialize_tag}`,
 `write_tree::write_tree_from_index`. Phase A spec:
-`docs/superpowers/specs/2026-06-14-pylibgrit-write-core-design.md` (§8 roadmap, byte-exact OID
+`docs/superpowers/specs/2026-06-14-pygritlib-write-core-design.md` (§8 roadmap, byte-exact OID
 rules, PyO3 binding gotchas). Canonical assembly pattern: grit-lib's `examples/commit_tree.rs`.

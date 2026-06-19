@@ -1,17 +1,17 @@
 """The two networking exception types exist and subclass GritError."""
 
-import pylibgrit
+import pygritlib
 
 
 def test_network_error_is_griterror_subclass() -> None:
-    assert issubclass(pylibgrit.NetworkError, pylibgrit.GritError)
+    assert issubclass(pygritlib.NetworkError, pygritlib.GritError)
 
 
 def test_authentication_error_is_griterror_subclass() -> None:
-    assert issubclass(pylibgrit.AuthenticationError, pylibgrit.GritError)
+    assert issubclass(pygritlib.AuthenticationError, pygritlib.GritError)
 
 
 def test_exceptions_are_distinct() -> None:
-    assert pylibgrit.NetworkError is not pylibgrit.AuthenticationError
-    assert not issubclass(pylibgrit.NetworkError, pylibgrit.AuthenticationError)
-    assert not issubclass(pylibgrit.AuthenticationError, pylibgrit.NetworkError)
+    assert pygritlib.NetworkError is not pygritlib.AuthenticationError
+    assert not issubclass(pygritlib.NetworkError, pygritlib.AuthenticationError)
+    assert not issubclass(pygritlib.AuthenticationError, pygritlib.NetworkError)

@@ -4,9 +4,9 @@ import pytest
 
 
 def test_ref_mismatch_error_is_griterror_subclass():
-    import pylibgrit
+    import pygritlib
 
-    assert issubclass(pylibgrit.RefMismatchError, pylibgrit.GritError)
+    assert issubclass(pygritlib.RefMismatchError, pygritlib.GritError)
 
 
 def _init(repo, env):
@@ -31,14 +31,14 @@ def _commit(repo, env, msg):
 
 
 def test_update_ref_overwrite(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    pg.update_ref(b"refs/heads/feature", pylibgrit.ObjectId.from_hex(c1))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    pg.update_ref(b"refs/heads/feature", pygritlib.ObjectId.from_hex(c1))
     got = (
         subprocess.run(
             ["git", "rev-parse", "refs/heads/feature"],
@@ -54,62 +54,62 @@ def test_update_ref_overwrite(tmp_path, git_env):
 
 
 def test_update_ref_create_only(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    oid = pylibgrit.ObjectId.from_hex(c1)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    oid = pygritlib.ObjectId.from_hex(c1)
     pg.update_ref(b"refs/heads/new", oid, create=True)  # ok, doesn't exist
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         pg.update_ref(b"refs/heads/new", oid, create=True)  # now exists
 
 
 def test_update_ref_cas(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
     c2 = _commit(repo, git_env, "two")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    o1, o2 = pylibgrit.ObjectId.from_hex(c1), pylibgrit.ObjectId.from_hex(c2)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    o1, o2 = pygritlib.ObjectId.from_hex(c1), pygritlib.ObjectId.from_hex(c2)
     pg.update_ref(b"refs/heads/cas", o1)
     # CAS succeeds when expected matches:
     pg.update_ref(b"refs/heads/cas", o2, expected_old=o1)
     # CAS fails when expected is stale:
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         pg.update_ref(b"refs/heads/cas", o1, expected_old=o1)  # current is o2 now
 
 
 def test_update_ref_create_and_expected_old_is_error(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    oid = pylibgrit.ObjectId.from_hex(c1)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    oid = pygritlib.ObjectId.from_hex(c1)
     with pytest.raises(ValueError):
         pg.update_ref(b"refs/heads/x", oid, create=True, expected_old=oid)
 
 
 def test_delete_ref_and_cas_delete(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
     c2 = _commit(repo, git_env, "two")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    o1, o2 = pylibgrit.ObjectId.from_hex(c1), pylibgrit.ObjectId.from_hex(c2)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    o1, o2 = pygritlib.ObjectId.from_hex(c1), pygritlib.ObjectId.from_hex(c2)
     pg.update_ref(b"refs/heads/d", o2)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         pg.delete_ref(b"refs/heads/d", expected_old=o1)  # stale -> refused
     pg.delete_ref(b"refs/heads/d", expected_old=o2)  # matches -> deleted
     rc = subprocess.run(
@@ -123,13 +123,13 @@ def test_delete_ref_and_cas_delete(tmp_path, git_env):
 
 
 def test_set_head_symbolic(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     _commit(repo, git_env, "one")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
     pg.set_head(b"refs/heads/other")
     got = (
         subprocess.run(
@@ -146,14 +146,14 @@ def test_set_head_symbolic(tmp_path, git_env):
 
 
 def test_set_symbolic_ref(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     c1 = _commit(repo, git_env, "one")
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    pg.update_ref(b"refs/heads/main", pylibgrit.ObjectId.from_hex(c1))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    pg.update_ref(b"refs/heads/main", pygritlib.ObjectId.from_hex(c1))
     pg.set_symbolic_ref(b"refs/heads/alias", b"refs/heads/main")
     got = (
         subprocess.run(

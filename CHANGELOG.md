@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to pylibgrit are documented here. The format is based on
+All notable changes to pygritlib are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
@@ -9,7 +9,7 @@ All notable changes to pylibgrit are documented here. The format is based on
 ### Added
 
 - **SSH transport** — `ls_remote`, `clone`, `fetch`, and `push` now support `ssh://`,
-  `git+ssh://`, and scp-style `user@host:path` URLs. pylibgrit spawns the system `ssh`
+  `git+ssh://`, and scp-style `user@host:path` URLs. pygritlib spawns the system `ssh`
   (no embedded SSH library); authentication (keys, ssh-agent, `known_hosts`) is handled
   entirely by `ssh`.
   - New `ssh_command=` keyword on all four entry points: a shell command line run via
@@ -66,7 +66,7 @@ All notable changes to pylibgrit are documented here. The format is based on
   All three entry points accept `username=` / `password=` kwargs, URL userinfo
   (`https://<token>@host/...`), or git credential helpers (`use_credential_helpers=True`,
   the default).
-  - `pylibgrit.ls_remote(url, *, username, password, use_credential_helpers, heads,
+  - `pygritlib.ls_remote(url, *, username, password, use_credential_helpers, heads,
     tags) -> list[RemoteRef]` — list a remote's refs without a local repo.
   - `Repository.clone(url, path, *, branch, username, password,
     use_credential_helpers) -> Repository` — worktree clone; fetches all tags (`tags="all"`,
@@ -141,8 +141,8 @@ All notable changes to pylibgrit are documented here. The format is based on
   config — a thin Python façade over grit-lib 0.4.1, shipped as an `abi3` (CPython 3.11+)
   wheel with no external `git` binary or system C libraries required.
 
-[0.5.0]: https://github.com/linsomniac/pylibgrit/releases/tag/v0.5.0
-[0.4.0]: https://github.com/linsomniac/pylibgrit/releases/tag/v0.4.0
-[0.3.0]: https://github.com/linsomniac/pylibgrit/releases/tag/v0.3.0
-[0.2.0]: https://github.com/linsomniac/pylibgrit/releases/tag/v0.2.0
-[0.1.0]: https://github.com/linsomniac/pylibgrit/releases/tag/v0.1.0
+[0.5.0]: https://github.com/linsomniac/pygritlib/releases/tag/v0.5.0
+[0.4.0]: https://github.com/linsomniac/pygritlib/releases/tag/v0.4.0
+[0.3.0]: https://github.com/linsomniac/pygritlib/releases/tag/v0.3.0
+[0.2.0]: https://github.com/linsomniac/pygritlib/releases/tag/v0.2.0
+[0.1.0]: https://github.com/linsomniac/pygritlib/releases/tag/v0.1.0

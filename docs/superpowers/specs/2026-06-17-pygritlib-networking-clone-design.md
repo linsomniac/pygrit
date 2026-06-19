@@ -1,8 +1,8 @@
-# pylibgrit Phase C — Networking & Clone (read-path) — Design
+# pygritlib Phase C — Networking & Clone (read-path) — Design
 
 **Status:** Approved (2026-06-17)
 **Depends on:** Phase A (write-core, 0.2.0) + Phase B (worktree & merge).
-**Roadmap:** `docs/superpowers/specs/2026-06-14-pylibgrit-write-core-design.md` §8 (C = networking & clone);
+**Roadmap:** `docs/superpowers/specs/2026-06-14-pygritlib-write-core-design.md` §8 (C = networking & clone);
 this spec narrows C to a **read-path** milestone and splits push into a future **Phase D**.
 
 ---
@@ -44,7 +44,7 @@ local repository, and clone. grit-lib has **no clone porcelain** — the binding
 
 ```python
 # Module-level — needs no local repository.
-pylibgrit.ls_remote(
+pygritlib.ls_remote(
     url: str, *,
     username: str | None = None,
     password: str | None = None,
@@ -221,7 +221,7 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
   in the background, serving an oracle-built bare repo; tear down on fixture exit. Tests:
   - `ls_remote` over `git://127.0.0.1:<port>/repo.git` lists the same refs as `git ls-remote`.
   - `fetch` into a fresh repo writes `refs/remotes/origin/*` + objects; `FetchReport` modes correct.
-  - `clone` (worktree) — **parity**: pylibgrit clone vs `git clone` ⇒ identical refs,
+  - `clone` (worktree) — **parity**: pygritlib clone vs `git clone` ⇒ identical refs,
     HEAD, and object set (reuse the byte-exact-OID oracle helpers).
   - Skip the whole module if `git daemon` is unavailable.
 - **https + auth (`git http-backend`):** a fixture serves a repo via `git http-backend` (CGI behind
@@ -231,7 +231,7 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
 - **Unit:** scheme dispatch + unknown-scheme `NetworkError`; URL-userinfo parsing/stripping; refspec
   defaulting; `origin` config contents after clone.
 - All **7 existing gates** stay green (`pytest`, `mypy python tests`,
-  `python -m mypy.stubtest pylibgrit` with **no allowlist**, `cargo fmt --check`,
+  `python -m mypy.stubtest pygritlib` with **no allowlist**, `cargo fmt --check`,
   `cargo clippy --all-targets --locked -- -D warnings`, `ruff format --check`, `ruff check`).
   `http-ureq` is compiled into the dev/test build, so clippy/tests cover the http path.
 
@@ -249,7 +249,7 @@ Extends `tests/gitlib.py` + `tests/conftest.py`.
 - **No transfer progress.** grit-lib 0.4.1 unconditionally sends `no-progress` in its upload-pack
   request (`fetch.rs:316` v0/v1, `fetch.rs:920` v2), so the server emits no side-band channel-2
   progress and grit's `Progress::message` hook never fires (verified empirically: 2→500 objects, 0
-  chunks). pylibgrit therefore exposes **no `progress=` parameter** and passes `NoProgress`. A progress
+  chunks). pygritlib therefore exposes **no `progress=` parameter** and passes `NoProgress`. A progress
   callback can be added once a grit-lib version stops forcing `no-progress`.
 - **`ls_remote` omits peeled tag `^{}` lines** (grit's `advertised_refs` excludes them), so an
   annotated tag appears once (its tag-object oid); `git ls-remote` additionally prints the peeled

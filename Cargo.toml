@@ -1,16 +1,16 @@
 [package]
-name = "pylibgrit"
+name = "pygritlib"
 version = "0.5.0"
 edition = "2021"
 license = "MIT"
 description = "Python bindings for grit-lib (a Rust reimplementation of Git)"
-repository = "https://github.com/linsomniac/pylibgrit"
-homepage = "https://github.com/linsomniac/pylibgrit"
-documentation = "https://github.com/linsomniac/pylibgrit"
+repository = "https://github.com/linsomniac/pygritlib"
+homepage = "https://github.com/linsomniac/pygritlib"
+documentation = "https://github.com/linsomniac/pygritlib"
 publish = false
 
 [lib]
-name = "_pylibgrit"
+name = "_pygritlib"
 crate-type = ["cdylib"]
 
 [dependencies]

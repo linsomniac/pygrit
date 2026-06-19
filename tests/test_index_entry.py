@@ -1,8 +1,8 @@
 def test_index_entry_minimal():
-    import pylibgrit
+    import pygritlib
 
-    oid = pylibgrit.ObjectId.from_hex("0" * 40)
-    e = pylibgrit.IndexEntry(b"a.txt", oid, 0o100644)
+    oid = pygritlib.ObjectId.from_hex("0" * 40)
+    e = pygritlib.IndexEntry(b"a.txt", oid, 0o100644)
     assert e.path == b"a.txt"
     assert e.oid == oid
     assert e.mode == 0o100644
@@ -11,10 +11,10 @@ def test_index_entry_minimal():
 
 
 def test_index_entry_full_fields():
-    import pylibgrit
+    import pygritlib
 
-    oid = pylibgrit.ObjectId.from_hex("1" * 40)
-    e = pylibgrit.IndexEntry(
+    oid = pygritlib.ObjectId.from_hex("1" * 40)
+    e = pygritlib.IndexEntry(
         b"src/x",
         oid,
         0o100755,

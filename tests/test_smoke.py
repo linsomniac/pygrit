@@ -1,6 +1,6 @@
 def test_native_module_imports():
-    import pylibgrit
+    import pygritlib
 
-    assert hasattr(pylibgrit, "Repository")
-    assert hasattr(pylibgrit, "ObjectId")
-    assert "Repository" in pylibgrit.__all__
+    assert hasattr(pygritlib, "Repository")
+    assert hasattr(pygritlib, "ObjectId")
+    assert "Repository" in pygritlib.__all__

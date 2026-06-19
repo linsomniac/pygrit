@@ -16,10 +16,10 @@ from tests.gitlib import rev_parse
 
 
 def test_concurrent_reads(simple_repo: Path) -> None:
-    import pylibgrit
+    import pygritlib
 
-    repo = pylibgrit.Repository.discover(str(simple_repo))
-    oid = pylibgrit.ObjectId.from_hex(rev_parse(simple_repo, "HEAD:a.txt"))
+    repo = pygritlib.Repository.discover(str(simple_repo))
+    oid = pygritlib.ObjectId.from_hex(rev_parse(simple_repo, "HEAD:a.txt"))
     errors: list[BaseException] = []
 
     def worker() -> None:

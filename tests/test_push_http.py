@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -23,7 +23,7 @@ def test_http_push(http_push_server) -> None:
         env=env,
     )
     new = run_git(p.local_path, "rev-parse", "HEAD", env=env).decode().strip()
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(p.repo_url, ["main"])
     assert report.ok
     assert (

@@ -13,7 +13,7 @@ use crate::net_transport::{classify, git_connect, reject_creds_for_ssh, ssh_conn
 // AIDEV-NOTE: One advertised remote ref. `name`/`symref_target` are bytes (house style: ref names
 // are bytes everywhere in the binding); `oid` is an ObjectId. HEAD is synthesized from the
 // connection's head_symref + the symref target's advertised oid (advertised_refs excludes HEAD).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct RemoteRef {
     name: Vec<u8>,
     oid: grit_lib::objects::ObjectId,
@@ -138,7 +138,7 @@ pub fn ls_remote(
 
 // AIDEV-NOTE: One applied ref update from a fetch. Ref names are bytes; oids are ObjectId; `mode` is
 // the lower-kebab `UpdateMode` name; `note` is grit's human-readable annotation.
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct RefUpdate {
     remote_ref: Vec<u8>,
     local_ref: Option<Vec<u8>>,
@@ -178,7 +178,7 @@ impl RefUpdate {
 
 // AIDEV-NOTE: The result of a fetch: the applied ref updates + the remote's default branch (HEAD
 // symref). Shallow fields are intentionally omitted (shallow deferred).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct FetchReport {
     updates: Vec<Py<RefUpdate>>,
     default_branch: Option<Vec<u8>>,

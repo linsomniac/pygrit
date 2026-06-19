@@ -1,4 +1,4 @@
-# pylibgrit Write-Core v2 — Phase A Design (Local Write-Core)
+# pygritlib Write-Core v2 — Phase A Design (Local Write-Core)
 
 **Date:** 2026-06-14
 **Type:** Design spec (drives an implementation plan)
@@ -7,7 +7,7 @@
 
 ## Goal
 
-Add a local object/ref **write** surface to pylibgrit, which today is read-only.
+Add a local object/ref **write** surface to pygritlib, which today is read-only.
 Phase A delivers a scriptable "build commits in a (bare or non-bare) repository" API
 — write objects, stage an index, write trees, create commit/tag objects, and mutate
 refs — all as thin wrappers over grit-lib 0.4.1 plumbing, with no working-tree
@@ -68,8 +68,8 @@ dependencies, no Cargo features, no network.
 | `src/refs.rs` | extend | `update_ref`, `delete_ref`, `set_head`, `set_symbolic_ref`, `append_reflog` (binding-layer CAS lives here) |
 | `src/repository.rs` | extend | wire `index()`, `create_commit()`, `create_tag()`, and the ref ops onto `Repository` |
 | `src/lib.rs` | extend | register the new `Index`/`IndexEntry` pyclasses and the `RefMismatchError` exception |
-| `python/pylibgrit/__init__.py` | extend | re-export new symbols; define the `UNSET` sentinel |
-| `python/pylibgrit/__init__.pyi` | extend | stubs for everything in §2 (kept in sync; `stubtest` gate) |
+| `python/pygritlib/__init__.py` | extend | re-export new symbols; define the `UNSET` sentinel |
+| `python/pygritlib/__init__.pyi` | extend | stubs for everything in §2 (kept in sync; `stubtest` gate) |
 
 **Concurrency model (unchanged from read-core):** `Odb` writes through `&self`
 (grit-lib's interior `Arc<Mutex>`), so no `&mut Repository` is needed. The `Index` is a
@@ -164,7 +164,7 @@ there.
 
 ### grit-lib primitives each method wraps
 
-| pylibgrit method | grit-lib plumbing |
+| pygritlib method | grit-lib plumbing |
 | --- | --- |
 | `Odb.write` / `Odb.hash` | `Odb::write(&self, kind, data)` / `Odb::hash(&self, kind, data)` |
 | `Index.add` | build `IndexEntry` (zeroed stat) → `Index::add_or_replace` |
@@ -182,13 +182,13 @@ there.
 ## 3. Data flow — canonical commit-build
 
 ```python
-repo = pylibgrit.Repository.open(git_dir)
+repo = pygritlib.Repository.open(git_dir)
 blob = repo.odb.write(ObjectKind.BLOB, b"hello\n")          # 1. write blob
 idx  = repo.index()
 idx.add(b"greeting.txt", blob, mode=0o100644)               # 2. stage
 idx.write()                                                 #    persist .git/index
 tree = idx.write_tree()                                     # 3. tree from index
-sig  = pylibgrit.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
+sig  = pygritlib.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
 commit = repo.create_commit(tree, parents=[], author=sig,   # 4. serialize+write commit
                             committer=sig, message=b"init\n")
 repo.update_ref(b"refs/heads/main", commit,                 # 5. move branch (create-only)
@@ -219,7 +219,7 @@ argument validation performed before any disk write:
 - **`OSError`** — grit-lib `Error::Io` (unwritable path, disk full, `stage()` on a
   missing file) maps to `OSError` with errno, exactly as the read-core already does.
 - **`GritError`** — grit-lib `IndexError` and the `#[non_exhaustive]` catch-all map
-  here. We deliberately do **not** introduce a `pylibgrit.IndexError`, to avoid
+  here. We deliberately do **not** introduce a `pygritlib.IndexError`, to avoid
   shadowing Python's builtin. The existing `map_err` already handles the catch-all arm.
 
 Because object writes are individually atomic (temp-file + rename), a mid-sequence
@@ -231,7 +231,7 @@ failure leaves already-written loose objects orphaned but harmless (reclaimed by
 The read-core's **oracle approach** (mirror each operation against real `git`, reusing
 the `tests/gitlib.py` helper) extends to writes, where the decisive assertion is
 **byte-exact OID parity with git**. Determinism comes from pinned timestamps plus
-`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` so git and pylibgrit emit identical bytes. All
+`GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` so git and pygritlib emit identical bytes. All
 tests run in tempdirs (disk effects are immediate).
 
 | New test file | Asserts |
@@ -245,7 +245,7 @@ tests run in tempdirs (disk effects are immediate).
 | `tests/test_write_concurrency.py` | parallel threaded writes are sound (mirrors existing `test_concurrency.py`; validates GIL release on the write path) |
 | `tests/test_write_errors.py` | `ValueError` on author/author_raw misuse and missing message; `OSError` on an unwritable path |
 
-Quality gates stay green: `ruff format`, `mypy`, and `stubtest pylibgrit` (the `.pyi`
+Quality gates stay green: `ruff format`, `mypy`, and `stubtest pygritlib` (the `.pyi`
 must keep matching the native module, as with the read-core).
 
 ## 6. Known limitations & risks

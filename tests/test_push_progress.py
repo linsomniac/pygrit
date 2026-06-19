@@ -6,7 +6,7 @@ import stat
 
 import pytest
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 MARKER = b"hello-from-hook"
@@ -48,7 +48,7 @@ def test_push_progress_receives_hook_output(git_daemon_push) -> None:
     _install_hook(p.server_path)
     _advance(p.local_path, env)
     chunks: list[bytes] = []
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(p.repo_url, ["main"], progress=chunks.append)
     assert report.ok
     assert any(MARKER in c for c in chunks), f"expected hook output in {chunks!r}"
@@ -67,7 +67,7 @@ def test_push_progress_callback_exception_propagates(git_daemon_push) -> None:
     def cb(_data: bytes) -> None:
         raise Boom("stop")
 
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     with pytest.raises(Boom):
         repo.push(p.repo_url, ["main"], progress=cb)
 
@@ -86,6 +86,6 @@ def test_push_progress_callback_exception_propagates_http(http_push_server) -> N
     def cb(_data: bytes) -> None:
         raise Boom("stop")
 
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     with pytest.raises(Boom):
         repo.push(p.repo_url, ["main"], progress=cb)

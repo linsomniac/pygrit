@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -23,7 +23,7 @@ def _all_refs(repo_dir: Path) -> dict[str, str]:
 def test_clone_matches_git_clone(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
     theirs = tmp_path / "theirs"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     run_git(tmp_path, "clone", "-q", git_daemon.repo_url, str(theirs))
 
     assert run_git(ours, "rev-parse", "HEAD") == run_git(theirs, "rev-parse", "HEAD")
@@ -36,7 +36,7 @@ def test_clone_matches_git_clone(git_daemon, tmp_path) -> None:
 
 def test_clone_writes_origin_config(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     url = run_git(ours, "config", "remote.origin.url").decode().strip()
     fetch = run_git(ours, "config", "remote.origin.fetch").decode().strip()
     assert url == git_daemon.repo_url
@@ -46,7 +46,7 @@ def test_clone_writes_origin_config(git_daemon, tmp_path) -> None:
 def test_clone_writes_branch_upstream(git_daemon, tmp_path) -> None:
     # `git clone` records the checked-out branch's upstream so `git pull`/`push` work.
     ours = tmp_path / "ours"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     remote = run_git(ours, "config", "branch.main.remote").decode().strip()
     merge = run_git(ours, "config", "branch.main.merge").decode().strip()
     assert remote == "origin"
@@ -56,7 +56,7 @@ def test_clone_writes_branch_upstream(git_daemon, tmp_path) -> None:
 def test_clone_branch_override_strips_refs_heads_prefix(git_daemon, tmp_path) -> None:
     # A fully-qualified branch= ("refs/heads/main") resolves the same as the short name.
     ours = tmp_path / "ours"
-    repo = pylibgrit.Repository.clone(
+    repo = pygritlib.Repository.clone(
         git_daemon.repo_url, ours, branch="refs/heads/main"
     )
     head = repo.head()
@@ -67,7 +67,7 @@ def test_clone_branch_override_strips_refs_heads_prefix(git_daemon, tmp_path) ->
 
 def test_clone_head_is_on_branch(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
-    repo = pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    repo = pygritlib.Repository.clone(git_daemon.repo_url, ours)
     head = repo.head()
     assert head.is_symbolic
     assert head.symbolic_target == b"refs/heads/main"
@@ -76,5 +76,5 @@ def test_clone_head_is_on_branch(git_daemon, tmp_path) -> None:
 def test_clone_fetches_tags(git_daemon, tmp_path) -> None:
     # clone uses tags="all" (git clone fetches all tags); v1 is on an older commit.
     ours = tmp_path / "ours"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     assert "refs/tags/v1" in _all_refs(ours)

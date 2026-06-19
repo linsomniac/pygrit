@@ -51,7 +51,7 @@ pub(crate) fn parse_favor(favor: Option<&str>) -> PyResult<grit_lib::merge_file:
 // call write_tree(). `conflicts` is the sorted union of {paths with a stage!=0 index entry} and
 // {conflict_content keys}; conflict_map gives the conflict-marker blob per path. has_conflicts is
 // the ORIGINAL merge outcome; write_tree re-checks the CURRENT index dynamically.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct MergeResult {
     index: Py<crate::index::Index>,
     conflicts: Vec<Vec<u8>>,

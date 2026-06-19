@@ -61,7 +61,7 @@ fn bytes_to_pathbuf(obj: &Bound<'_, PyAny>) -> PyResult<std::path::PathBuf> {
 // hand out an `Odb` that clones the Arc and outlives this Python `Repository` handle
 // (design §6: a child Odb keeps the repo alive). grit-lib exposes git_dir/work_tree/odb
 // as PUBLIC FIELDS (no getter methods); is_bare() is the only method here.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct Repository {
     pub(crate) inner: Arc<grit_lib::repo::Repository>,
 }
@@ -90,7 +90,7 @@ impl Repository {
     // loose-ref backend; reftable is out of scope for Phase B). `initial_branch` becomes the
     // symbolic HEAD target refs/heads/<branch>; we validate it as a ref so a bad name cannot
     // corrupt HEAD. initial_branch=None defaults to "main" (matches our own default branch).
-    // initial_branch is bytes (not str) for consistency with the rest of pylibgrit's write
+    // initial_branch is bytes (not str) for consistency with the rest of pygritlib's write
     // surface (ref/name fields are all bytes for byte-fidelity).
     #[staticmethod]
     #[pyo3(signature = (path, *, bare=false, initial_branch=None))]

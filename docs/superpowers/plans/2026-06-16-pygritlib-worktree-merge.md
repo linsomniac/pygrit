@@ -1,8 +1,8 @@
-# pylibgrit Phase B — Worktree & Merge — Implementation Plan
+# pygritlib Phase B — Worktree & Merge — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a local working-tree + three-way-merge surface to pylibgrit on top of grit-lib 0.4.1 plumbing — `Repository.init`, `checkout_tree`, `merge_base`/`merge_trees`/`merge_commits`, `commit_index`, tag-ref helpers — and upgrade ref compare-and-swap from best-effort to a binding-held lockfile.
+**Goal:** Add a local working-tree + three-way-merge surface to pygritlib on top of grit-lib 0.4.1 plumbing — `Repository.init`, `checkout_tree`, `merge_base`/`merge_trees`/`merge_commits`, `commit_index`, tag-ref helpers — and upgrade ref compare-and-swap from best-effort to a binding-held lockfile.
 
 **Architecture:** Each method assembles a grit-lib plumbing workflow in Rust behind the existing OO façade (methods on `Repository`; `MergeResult` is a returned value-object). No new dependencies, no Cargo features, no network. Two new modules (`src/checkout.rs`, `src/merge.rs`); the atomic-CAS helpers live in `src/refs.rs`. All disk effects are atomic (temp-file/lock + rename).
 
@@ -14,18 +14,18 @@
 
 - **Branch:** `worktree-merge-phase-b` (already created off `main`).
 - **Build before pytest:** `uv run maturin develop --uv --locked`
-  - If `uv run` serves a stale cached build, force a reinstall: `uv pip install -e . --reinstall-package pylibgrit`
+  - If `uv run` serves a stale cached build, force a reinstall: `uv pip install -e . --reinstall-package pygritlib`
 - **Gate suite (all must pass before a task's final commit):**
   ```bash
   uv run maturin develop --uv --locked
   uv run pytest -q
   uv run mypy python tests
-  uv run python -m mypy.stubtest pylibgrit            # NO allowlist
+  uv run python -m mypy.stubtest pygritlib            # NO allowlist
   cargo fmt --check
   cargo clippy --all-targets --locked -- -D warnings
   uv run ruff format --check . && uv run ruff check .
   ```
-- **Stubs are part of the change.** Any new Python-visible method/class REQUIRES a matching `python/pylibgrit/__init__.pyi` entry in the *same* task, or `stubtest` fails. PyO3 `#[new]` → stub as `def __new__`. Non-trivial defaults (bytes, tuples) → stub the default as `= ...`.
+- **Stubs are part of the change.** Any new Python-visible method/class REQUIRES a matching `python/pygritlib/__init__.pyi` entry in the *same* task, or `stubtest` fails. PyO3 `#[new]` → stub as `def __new__`. Non-trivial defaults (bytes, tuples) → stub the default as `= ...`.
 - **Anchor comments:** add `AIDEV-NOTE:` comments on the non-obvious bits (atomic-CAS lock protocol, checkout overlay policy, merge conflict derivation), per the repo's existing style. Do not remove existing `AIDEV-` anchors.
 - **Format Python with `ruff format`; annotate types; keep mypy clean.**
 
@@ -44,7 +44,7 @@
 - `grit_lib::index::entry_from_stat(abs: &Path, rel: &[u8], oid: ObjectId, mode: u32) -> Result<IndexEntry>`.
 - Ref path + lock (all **public**): `grit_lib::worktree_ref::resolve_ref_storage(git_dir, refname) -> (PathBuf, String)` (the `.0` is exactly grit's private `ref_storage_dir`), `grit_lib::ref_namespace::storage_ref_name(refname) -> String`, `grit_lib::refs::lock_path_for_ref(path: &Path) -> PathBuf`. grit's own `write_ref` computes `path = resolve_ref_storage(git_dir, refname).0.join(storage_ref_name(refname))` and locks `lock_path_for_ref(&path)` with `O_CREAT|O_EXCL`.
 - `grit_lib::refs::read_raw_ref(git_dir, refname) -> Result<RawRefLookup>` (`Exists | NotFound | IsDirectory`); `grit_lib::refs::resolve_ref(git_dir, refname) -> Result<ObjectId>`; `grit_lib::refs::read_head(git_dir) -> Result<Option<String>>` (symbolic target, or `None` if detached); `grit_lib::refs::packed_refs_entry_exists(git_dir, refname) -> Result<bool>`; `grit_lib::refs::append_reflog(git_dir, refname, old, new, ident, msg, force_create) -> Result<()>`.
-- Existing pylibgrit helpers to reuse (all in `src/repository.rs` unless noted): `extract_path`, `validate_ref_name`, `reject_wire_control`, `reflog_args`, `utf8_field`; `crate::objects::{resolve_ident, py_to_kind, ObjectId, Signature}`; `crate::refs::{read_current_oid, zero_like}`; `crate::index::Index::new_loaded`; `crate::error::{map_err, invalid_ref, RefMismatchError, RepositoryError, InvalidObjectError}`. `ObjectId`: `.inner() -> grit_lib::objects::ObjectId`, `::from_inner`, `.to_hex()`, `Display` writes hex, `PartialEq`. The `Repository` pyclass holds `inner: Arc<grit_lib::repo::Repository>` with public fields `inner.git_dir: PathBuf`, `inner.work_tree: Option<PathBuf>`, `inner.odb`, and methods `inner.load_index()`, `inner.write_index(&mut Index)`.
+- Existing pygritlib helpers to reuse (all in `src/repository.rs` unless noted): `extract_path`, `validate_ref_name`, `reject_wire_control`, `reflog_args`, `utf8_field`; `crate::objects::{resolve_ident, py_to_kind, ObjectId, Signature}`; `crate::refs::{read_current_oid, zero_like}`; `crate::index::Index::new_loaded`; `crate::error::{map_err, invalid_ref, RefMismatchError, RepositoryError, InvalidObjectError}`. `ObjectId`: `.inner() -> grit_lib::objects::ObjectId`, `::from_inner`, `.to_hex()`, `Display` writes hex, `PartialEq`. The `Repository` pyclass holds `inner: Arc<grit_lib::repo::Repository>` with public fields `inner.git_dir: PathBuf`, `inner.work_tree: Option<PathBuf>`, `inner.odb`, and methods `inner.load_index()`, `inner.write_index(&mut Index)`.
 
 ---
 
@@ -52,7 +52,7 @@
 
 **Files:**
 - Modify: `src/repository.rs` (add an `init` staticmethod inside the existing `#[pymethods] impl Repository` block, next to `open`/`discover`)
-- Modify: `python/pylibgrit/__init__.pyi` (Repository class)
+- Modify: `python/pygritlib/__init__.pyi` (Repository class)
 - Test: `tests/test_init.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -73,10 +73,10 @@ def _git_text(repo, env, *args):
 
 
 def test_init_non_bare_recognized_by_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work), initial_branch=b"main")
+    repo = pygritlib.Repository.init(str(work), initial_branch=b"main")
     assert repo.is_bare is False
     # git recognizes it and HEAD is the symbolic ref refs/heads/main (unborn)
     assert _git_text(work, git_env, "rev-parse", "--is-bare-repository") == "false"
@@ -84,20 +84,20 @@ def test_init_non_bare_recognized_by_git(tmp_path, git_env):
 
 
 def test_init_bare(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     gd = tmp_path / "b.git"
-    repo = pylibgrit.Repository.init(str(gd), bare=True, initial_branch=b"trunk")
+    repo = pygritlib.Repository.init(str(gd), bare=True, initial_branch=b"trunk")
     assert repo.is_bare is True
     assert _git_text(gd, git_env, "rev-parse", "--is-bare-repository") == "true"
     assert _git_text(gd, git_env, "symbolic-ref", "HEAD") == "refs/heads/trunk"
 
 
 def test_init_default_branch_is_main(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "d"
-    pylibgrit.Repository.init(str(work))
+    pygritlib.Repository.init(str(work))
     assert _git_text(work, git_env, "symbolic-ref", "HEAD") == "refs/heads/main"
 ```
 
@@ -144,7 +144,7 @@ fn init(
 }
 ```
 
-Add to the Repository stub in `python/pylibgrit/__init__.pyi` (right after the class line, before `discover`):
+Add to the Repository stub in `python/pygritlib/__init__.pyi` (right after the class line, before `discover`):
 
 ```python
     @staticmethod
@@ -166,7 +166,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/repository.rs python/pylibgrit/__init__.pyi tests/test_init.py
+git add src/repository.rs python/pygritlib/__init__.pyi tests/test_init.py
 git commit -m "feat: Repository.init (worktree & bare) over grit init_repository"
 ```
 
@@ -177,7 +177,7 @@ git commit -m "feat: Repository.init (worktree & bare) over grit init_repository
 **Files:**
 - Modify: `src/index.rs:14` — change `fn validate_index_path` to `pub(crate) fn validate_index_path`
 - Modify: `src/repository.rs` (add `write_to_worktree` method)
-- Modify: `python/pylibgrit/__init__.pyi` (Repository class)
+- Modify: `python/pygritlib/__init__.pyi` (Repository class)
 - Test: `tests/test_checkout.py` (create — Task 3 adds more to this file)
 
 - [ ] **Step 1: Write the failing test**
@@ -190,29 +190,29 @@ import pytest
 
 
 def test_write_to_worktree_writes_file(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
+    repo = pygritlib.Repository.init(str(work))
     repo.write_to_worktree(b"sub/greeting.txt", b"hello\n", 0o100644)
     assert (work / "sub" / "greeting.txt").read_bytes() == b"hello\n"
 
 
 def test_write_to_worktree_executable_bit(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
+    repo = pygritlib.Repository.init(str(work))
     repo.write_to_worktree(b"run.sh", b"#!/bin/sh\n", 0o100755)
     assert os.access(work / "run.sh", os.X_OK)
 
 
 def test_write_to_worktree_bare_raises(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     gd = tmp_path / "b.git"
-    repo = pylibgrit.Repository.init(str(gd), bare=True)
-    with pytest.raises(pylibgrit.RepositoryError):
+    repo = pygritlib.Repository.init(str(gd), bare=True)
+    with pytest.raises(pygritlib.RepositoryError):
         repo.write_to_worktree(b"x.txt", b"y", 0o100644)
 ```
 
@@ -275,7 +275,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/index.rs src/repository.rs python/pylibgrit/__init__.pyi tests/test_checkout.py
+git add src/index.rs src/repository.rs python/pygritlib/__init__.pyi tests/test_checkout.py
 git commit -m "feat: Repository.write_to_worktree + share validate_index_path"
 ```
 
@@ -287,7 +287,7 @@ git commit -m "feat: Repository.write_to_worktree + share validate_index_path"
 - Create: `src/checkout.rs`
 - Modify: `src/lib.rs` (add `mod checkout;`)
 - Modify: `src/repository.rs` (add `checkout_tree` method)
-- Modify: `python/pylibgrit/__init__.pyi` (Repository class)
+- Modify: `python/pygritlib/__init__.pyi` (Repository class)
 - Test: `tests/test_checkout.py` (extend)
 
 - [ ] **Step 1: Write the failing test**
@@ -312,17 +312,17 @@ def _commit_one_file(work, git_env, path, content):
 
 
 def test_checkout_tree_materializes_files(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     src = tmp_path / "src"
     tree_hex = _commit_one_file(src, git_env, "dir/a.txt", b"alpha\n")
 
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(str(dst))
+    repo = pygritlib.Repository.init(str(dst))
     repo.odb  # ensure open
     # Pull the blob into dst's odb by writing it, then checkout the tree.
     # Simplest: open src as odb source is out of scope; re-create the blob in dst.
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"alpha\n")
     idx = repo.index()
     idx.add(b"dir/a.txt", blob, 0o100644)
     tree = idx.write_tree()
@@ -331,12 +331,12 @@ def test_checkout_tree_materializes_files(tmp_path, git_env):
 
 
 def test_checkout_tree_overlay_preserves_untracked(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(str(dst))
+    repo = pygritlib.Repository.init(str(dst))
     (dst / "keep.txt").write_bytes(b"mine\n")
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"alpha\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     repo.checkout_tree(idx.write_tree())
@@ -345,12 +345,12 @@ def test_checkout_tree_overlay_preserves_untracked(tmp_path):
 
 
 def test_checkout_tree_no_clobber_without_force(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(str(dst))
+    repo = pygritlib.Repository.init(str(dst))
     (dst / "a.txt").write_bytes(b"existing\n")
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"alpha\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     tree = idx.write_tree()
@@ -362,11 +362,11 @@ def test_checkout_tree_no_clobber_without_force(tmp_path):
 
 
 def test_checkout_tree_updates_index(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(str(dst))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"alpha\n")
+    repo = pygritlib.Repository.init(str(dst))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"alpha\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     repo.checkout_tree(idx.write_tree(), update_index=True)
@@ -378,15 +378,15 @@ def test_checkout_tree_updates_index(tmp_path, git_env):
 
 
 def test_checkout_tree_bare_raises(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     gd = tmp_path / "b.git"
-    repo = pylibgrit.Repository.init(str(gd), bare=True)
-    empty = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x")
+    repo = pygritlib.Repository.init(str(gd), bare=True)
+    empty = repo.odb.write(pygritlib.ObjectKind.BLOB, b"x")
     idx = repo.index()
     idx.add(b"a.txt", empty, 0o100644)
     tree = idx.write_tree()
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.checkout_tree(tree)
 ```
 
@@ -568,7 +568,7 @@ Expected: PASS (all checkout tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/checkout.rs src/lib.rs src/repository.rs python/pylibgrit/__init__.pyi tests/test_checkout.py
+git add src/checkout.rs src/lib.rs src/repository.rs python/pygritlib/__init__.pyi tests/test_checkout.py
 git commit -m "feat: checkout_tree non-destructive overlay over grit worktree primitives"
 ```
 
@@ -578,7 +578,7 @@ git commit -m "feat: checkout_tree non-destructive overlay over grit worktree pr
 
 **Files:**
 - Modify: `src/repository.rs` (add `merge_base`)
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_merge.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -620,18 +620,18 @@ def _diamond(work, git_env):
 
 
 def test_merge_base_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, a, b, base = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
-    mb = repo.merge_base(pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b))
+    repo = pygritlib.Repository.open(str(work / ".git"))
+    mb = repo.merge_base(pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b))
     assert mb is not None
     assert mb.hex == base
     assert mb.hex == _git(work, git_env, "merge-base", a, b)
 
 
 def test_merge_base_unrelated_is_none(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(["git", "init", "-q", "-b", "main", str(work)], env=git_env, check=True)
@@ -645,10 +645,10 @@ def test_merge_base_unrelated_is_none(tmp_path, git_env):
     _git(work, git_env, "add", "-A")
     _git(work, git_env, "commit", "-q", "-m", "two")
     two = _git(work, git_env, "rev-parse", "HEAD")
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     assert (
         repo.merge_base(
-            pylibgrit.ObjectId.from_hex(one), pylibgrit.ObjectId.from_hex(two)
+            pygritlib.ObjectId.from_hex(one), pygritlib.ObjectId.from_hex(two)
         )
         is None
     )
@@ -701,7 +701,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/repository.rs python/pylibgrit/__init__.pyi tests/test_merge.py
+git add src/repository.rs python/pygritlib/__init__.pyi tests/test_merge.py
 git commit -m "feat: Repository.merge_base (first base; == git merge-base)"
 ```
 
@@ -714,7 +714,7 @@ git commit -m "feat: Repository.merge_base (first base; == git merge-base)"
 - Modify: `src/lib.rs` (add `mod merge;` and `m.add_class::<merge::MergeResult>()?;`)
 - Modify: `src/index.rs` (add `pub(crate) fn has_unmerged` to `impl Index`; make `write_tree` `pub(crate)`)
 - Modify: `src/repository.rs` (add `merge_trees`)
-- Modify: `python/pylibgrit/__init__.{py,pyi}` (export `MergeResult`)
+- Modify: `python/pygritlib/__init__.{py,pyi}` (export `MergeResult`)
 - Test: `tests/test_merge.py` (extend)
 
 - [ ] **Step 1: Write the failing test**
@@ -722,7 +722,7 @@ git commit -m "feat: Repository.merge_base (first base; == git merge-base)"
 ```python
 # append to tests/test_merge.py
 def test_merge_trees_clean_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     # base has f.txt; ours adds a.txt; theirs adds b.txt -> clean merge.
     work = tmp_path / "r"
@@ -744,11 +744,11 @@ def test_merge_trees_clean_matches_git(tmp_path, git_env):
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
     theirs_commit = _git(work, git_env, "rev-parse", "HEAD")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
     )
     assert res.has_conflicts is False
     assert res.conflicts == []
@@ -765,7 +765,7 @@ def test_merge_trees_clean_matches_git(tmp_path, git_env):
 
 
 def test_merge_trees_conflict_reports_paths(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(["git", "init", "-q", "-b", "main", str(work)], env=git_env, check=True)
@@ -784,21 +784,21 @@ def test_merge_trees_conflict_reports_paths(tmp_path, git_env):
     _git(work, git_env, "commit", "-q", "-m", "B")
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
     )
     assert res.has_conflicts is True
     assert b"c.txt" in res.conflicts
     assert res.conflict_blob(b"c.txt") is not None
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         res.write_tree()
 
 
 def test_merge_trees_favor_ours(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(["git", "init", "-q", "-b", "main", str(work)], env=git_env, check=True)
@@ -817,11 +817,11 @@ def test_merge_trees_favor_ours(tmp_path, git_env):
     _git(work, git_env, "commit", "-q", "-m", "B")
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
         favor="ours",
     )
     assert res.has_conflicts is False  # favor=ours auto-resolves
@@ -833,11 +833,11 @@ def test_merge_trees_favor_ours(tmp_path, git_env):
 
 
 def test_merge_trees_bad_favor_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, *_ = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
-    head_tree = pylibgrit.ObjectId.from_hex(_git(work, git_env, "rev-parse", "HEAD^{tree}"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
+    head_tree = pygritlib.ObjectId.from_hex(_git(work, git_env, "rev-parse", "HEAD^{tree}"))
     with pytest.raises(ValueError):
         repo.merge_trees(head_tree, head_tree, head_tree, favor="bogus")
 ```
@@ -909,7 +909,7 @@ pub(crate) fn parse_favor(favor: Option<&str>) -> PyResult<grit_lib::merge_file:
 // call write_tree(). `conflicts` is the sorted union of {paths with a stage!=0 index entry} and
 // {conflict_content keys}; conflict_map gives the conflict-marker blob per path. has_conflicts is
 // the ORIGINAL merge outcome; write_tree re-checks the CURRENT index dynamically.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct MergeResult {
     index: Py<crate::index::Index>,
     conflicts: Vec<Vec<u8>>,
@@ -1022,9 +1022,9 @@ fn merge_trees(
 
 In `src/lib.rs`: add `mod merge;` (near `mod checkout;`) and `m.add_class::<merge::MergeResult>()?;` (next to the other `add_class` calls).
 
-In `python/pylibgrit/__init__.py`: add `MergeResult` to BOTH the `from pylibgrit._pylibgrit import (...)` block and `__all__` (keep alphabetical: after `IndexEntry`/before `InvalidObjectError` for the import; mirror in `__all__`).
+In `python/pygritlib/__init__.py`: add `MergeResult` to BOTH the `from pygritlib._pygritlib import (...)` block and `__all__` (keep alphabetical: after `IndexEntry`/before `InvalidObjectError` for the import; mirror in `__all__`).
 
-In `python/pylibgrit/__init__.pyi`: add the class (place near `Index`) and the `merge_trees` method on `Repository`:
+In `python/pygritlib/__init__.pyi`: add the class (place near `Index`) and the `merge_trees` method on `Repository`:
 
 ```python
 @final
@@ -1057,7 +1057,7 @@ Expected: PASS (merge_trees tests; the oracle test skips if git < 2.38).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/merge.rs src/index.rs src/lib.rs src/repository.rs python/pylibgrit/__init__.py python/pylibgrit/__init__.pyi tests/test_merge.py
+git add src/merge.rs src/index.rs src/lib.rs src/repository.rs python/pygritlib/__init__.py python/pygritlib/__init__.pyi tests/test_merge.py
 git commit -m "feat: MergeResult + merge_trees (three-way tree merge)"
 ```
 
@@ -1068,7 +1068,7 @@ git commit -m "feat: MergeResult + merge_trees (three-way tree merge)"
 **Files:**
 - Modify: `src/merge.rs` (add `tree_of_commit` helper)
 - Modify: `src/repository.rs` (add `merge_commits`)
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_merge.py` (extend)
 
 - [ ] **Step 1: Write the failing test**
@@ -1076,12 +1076,12 @@ git commit -m "feat: MergeResult + merge_trees (three-way tree merge)"
 ```python
 # append to tests/test_merge.py
 def test_merge_commits_clean_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, a, b, _base = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_commits(
-        pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b)
+        pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b)
     )
     assert res.has_conflicts is False
     got = res.write_tree().hex
@@ -1095,7 +1095,7 @@ def test_merge_commits_clean_matches_git(tmp_path, git_env):
 
 
 def test_merge_commits_conflict(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     # Same-file divergent edits on both sides -> conflict.
     work = tmp_path / "r"
@@ -1113,9 +1113,9 @@ def test_merge_commits_conflict(tmp_path, git_env):
     _git(work, git_env, "add", "-A")
     _git(work, git_env, "commit", "-q", "-m", "B")
     b = _git(work, git_env, "rev-parse", "HEAD")
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_commits(
-        pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b)
+        pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b)
     )
     assert res.has_conflicts is True
     assert b"c.txt" in res.conflicts
@@ -1206,7 +1206,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/merge.rs src/repository.rs python/pylibgrit/__init__.pyi tests/test_merge.py
+git add src/merge.rs src/repository.rs python/pygritlib/__init__.pyi tests/test_merge.py
 git commit -m "feat: merge_commits (auto merge-base; empty-tree base for unrelated)"
 ```
 
@@ -1231,18 +1231,18 @@ import pytest
 
 
 def _repo_with_main(tmp_path):
-    import pylibgrit
+    import pygritlib
 
-    repo = pylibgrit.Repository.init(str(tmp_path / "r"))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    repo = pygritlib.Repository.init(str(tmp_path / "r"))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"x\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     idx.write()
     tree = idx.write_tree()
-    sig = pylibgrit.Signature(b"A", b"a@x", (1700000000, 0))
+    sig = pygritlib.Signature(b"A", b"a@x", (1700000000, 0))
     c1 = repo.create_commit(tree, parents=[], author=sig, committer=sig, message=b"c1\n")
     repo.update_ref(b"refs/heads/main", c1, create=True)
-    blob2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"y\n")
+    blob2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"y\n")
     idx.add(b"a.txt", blob2, 0o100644)
     tree2 = idx.write_tree()
     c2 = repo.create_commit(tree2, parents=[c1], author=sig, committer=sig, message=b"c2\n")
@@ -1250,11 +1250,11 @@ def _repo_with_main(tmp_path):
 
 
 def test_cas_mismatch_raises_and_leaves_ref(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     # expected_old=c2 but ref is c1 -> mismatch.
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.update_ref(b"refs/heads/main", c2, expected_old=c2)
     assert repo.resolve("refs/heads/main") == c1
 
@@ -1266,21 +1266,21 @@ def test_cas_success_advances(tmp_path):
 
 
 def test_create_only_on_existing_raises(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.update_ref(b"refs/heads/main", c2, create=True)
 
 
 def test_preexisting_lock_is_contention_error(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     git_dir = tmp_path / "r" / ".git"
     lock = git_dir / "refs" / "heads" / "main.lock"
     lock.write_text("")  # simulate another writer holding the lock
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.update_ref(b"refs/heads/main", c2, expected_old=c1)
     lock.unlink()
     # No stale lock from our failed attempt (we only created the contention one).
@@ -1288,7 +1288,7 @@ def test_preexisting_lock_is_contention_error(tmp_path):
 
 
 def test_threaded_race_exactly_one_winner(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     # Many threads try to advance main from c1 -> c2 with CAS; exactly one wins.
@@ -1300,9 +1300,9 @@ def test_threaded_race_exactly_one_winner(tmp_path):
         try:
             repo.update_ref(b"refs/heads/main", c2, expected_old=c1)
             results.append(True)
-        except pylibgrit.RefMismatchError:
+        except pygritlib.RefMismatchError:
             results.append(False)
-        except pylibgrit.RepositoryError:
+        except pygritlib.RepositoryError:
             results.append(False)  # lost the lock race; acceptable
 
     threads = [threading.Thread(target=attempt) for _ in range(8)]
@@ -1315,17 +1315,17 @@ def test_threaded_race_exactly_one_winner(tmp_path):
 
 
 def test_cas_delete_loose(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     repo.update_ref(b"refs/tags/v1", c1, create=True)
     # CAS-delete with wrong expected -> mismatch, ref stays.
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.delete_ref(b"refs/tags/v1", expected_old=c2)
     assert repo.resolve("refs/tags/v1") == c1
     # CAS-delete with right expected -> gone.
     repo.delete_ref(b"refs/tags/v1", expected_old=c1)
-    with pytest.raises(pylibgrit.GritError):
+    with pytest.raises(pygritlib.GritError):
         repo.resolve("refs/tags/v1")
 ```
 
@@ -1600,7 +1600,7 @@ git commit -m "feat: atomic ref CAS via binding-held lockfile (update/create + l
 
 **Files:**
 - Modify: `src/repository.rs` (add `commit_index` + a `first_line` helper)
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_commit_index.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -1623,16 +1623,16 @@ def _git(repo, env, *args):
 
 
 def test_commit_index_first_commit_unborn(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    repo = pygritlib.Repository.init(str(work))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     idx.write()
-    sig = pylibgrit.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
-    com = pylibgrit.Signature(b"Test Committer", b"committer@example.com", (1112911993, 0))
+    sig = pygritlib.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
+    com = pygritlib.Signature(b"Test Committer", b"committer@example.com", (1112911993, 0))
     oid = repo.commit_index(message=b"initial\n", author=sig, committer=com)
     # Branch advanced from unborn.
     assert _git(work, git_env, "rev-parse", "refs/heads/main") == oid.hex
@@ -1648,17 +1648,17 @@ def test_commit_index_first_commit_unborn(tmp_path, git_env):
 
 
 def test_commit_index_advances_with_parent(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
     c1 = repo.commit_index(message=b"one\n", author=sig, committer=sig)
-    b2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"two\n")
+    b2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"two\n")
     idx.add(b"a.txt", b2, 0o100644)
     idx.write()
     c2 = repo.commit_index(message=b"two\n", author=sig, committer=sig)
@@ -1671,12 +1671,12 @@ def test_commit_index_advances_with_parent(tmp_path, git_env):
 
 
 def test_commit_index_merge_extra_parents(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
@@ -1685,7 +1685,7 @@ def test_commit_index_merge_extra_parents(tmp_path, git_env):
     side = repo.create_commit(
         repo.commit(c1).tree, parents=[c1], author=sig, committer=sig, message=b"side\n"
     )
-    b2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"merged\n")
+    b2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"merged\n")
     idx.add(b"a.txt", b2, 0o100644)
     idx.write()
     merge = repo.commit_index(message=b"merge\n", parents=[side], author=sig, committer=sig)
@@ -1697,12 +1697,12 @@ def test_commit_index_merge_extra_parents(tmp_path, git_env):
 
 
 def test_commit_index_detached_head_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
@@ -1710,7 +1710,7 @@ def test_commit_index_detached_head_raises(tmp_path, git_env):
     repo.set_head(c1.hex.encode())  # detach HEAD onto the oid directly is not symbolic;
     # set_head writes a symbolic ref, so instead detach via git:
     subprocess.run(["git", "checkout", "-q", "--detach"], cwd=work, env=git_env, check=True)
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.commit_index(message=b"x\n", author=sig, committer=sig)
 ```
 
@@ -1877,7 +1877,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/repository.rs python/pylibgrit/__init__.pyi tests/test_commit_index.py
+git add src/repository.rs python/pygritlib/__init__.pyi tests/test_commit_index.py
 git commit -m "feat: commit_index (commit + atomic branch advance + reflog)"
 ```
 
@@ -1887,7 +1887,7 @@ git commit -m "feat: commit_index (commit + atomic branch advance + reflog)"
 
 **Files:**
 - Modify: `src/repository.rs` (add the two methods + a `tag_refname` helper)
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_tag_ref.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -1910,12 +1910,12 @@ def _git(repo, env, *args):
 
 
 def _repo_one_commit(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"x\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
@@ -1924,22 +1924,22 @@ def _repo_one_commit(tmp_path, git_env):
 
 
 def test_lightweight_tag(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo, work, c1, _sig = _repo_one_commit(tmp_path, git_env)
     repo.create_lightweight_tag(b"v1", c1)
     assert _git(work, git_env, "rev-parse", "refs/tags/v1") == c1.hex
     # create again without force -> RefMismatchError.
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.create_lightweight_tag(b"v1", c1)
 
 
 def test_annotated_tag(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo, work, c1, sig = _repo_one_commit(tmp_path, git_env)
     tag_oid = repo.create_annotated_tag(
-        b"v2", c1, pylibgrit.ObjectKind.COMMIT, message=b"release 2\n", tagger=sig
+        b"v2", c1, pygritlib.ObjectKind.COMMIT, message=b"release 2\n", tagger=sig
     )
     # refs/tags/v2 points at the tag OBJECT, which peels to c1.
     assert _git(work, git_env, "rev-parse", "refs/tags/v2") == tag_oid.hex
@@ -1948,16 +1948,16 @@ def test_annotated_tag(tmp_path, git_env):
 
 
 def test_annotated_tag_force_moves(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo, work, c1, sig = _repo_one_commit(tmp_path, git_env)
     repo.create_lightweight_tag(b"v3", c1)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.create_annotated_tag(
-            b"v3", c1, pylibgrit.ObjectKind.COMMIT, message=b"m\n", tagger=sig
+            b"v3", c1, pygritlib.ObjectKind.COMMIT, message=b"m\n", tagger=sig
         )
     tag_oid = repo.create_annotated_tag(
-        b"v3", c1, pylibgrit.ObjectKind.COMMIT, message=b"m\n", tagger=sig, force=True
+        b"v3", c1, pygritlib.ObjectKind.COMMIT, message=b"m\n", tagger=sig, force=True
     )
     assert _git(work, git_env, "rev-parse", "refs/tags/v3") == tag_oid.hex
 ```
@@ -2057,7 +2057,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/repository.rs python/pylibgrit/__init__.pyi tests/test_tag_ref.py
+git add src/repository.rs python/pygritlib/__init__.pyi tests/test_tag_ref.py
 git commit -m "feat: lightweight + annotated tag-ref porcelain"
 ```
 
@@ -2087,14 +2087,14 @@ def _git(repo, env, *args):
 
 def test_init_commit_checkout_merge_end_to_end(tmp_path, git_env):
     """init -> stage -> commit_index -> checkout -> branch -> merge -> commit merge."""
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work), initial_branch=b"main")
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
+    repo = pygritlib.Repository.init(str(work), initial_branch=b"main")
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
 
     # base commit on main
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"base\n")
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"base\n")
     idx = repo.index()
     idx.add(b"f.txt", blob, 0o100644)
     idx.write()
@@ -2105,14 +2105,14 @@ def test_init_commit_checkout_merge_end_to_end(tmp_path, git_env):
     assert (work / "f.txt").read_bytes() == b"base\n"
 
     # ours: add a.txt on main
-    ba = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"a\n")
+    ba = repo.odb.write(pygritlib.ObjectKind.BLOB, b"a\n")
     idx.add(b"a.txt", ba, 0o100644)
     idx.write()
     ours = repo.commit_index(message=b"A\n", author=sig, committer=sig)
 
     # theirs: a side branch off base that adds b.txt
     repo.update_ref(b"refs/heads/feat", base, create=True)
-    bb = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"b\n")
+    bb = repo.odb.write(pygritlib.ObjectKind.BLOB, b"b\n")
     # build theirs tree from base + b.txt directly via a fresh index state
     fidx = repo.index()
     fidx.add(b"f.txt", blob, 0o100644)
@@ -2161,7 +2161,7 @@ Expected: PASS (all prior tasks complete).
 uv run maturin develop --uv --locked
 uv run pytest -q
 uv run mypy python tests
-uv run python -m mypy.stubtest pylibgrit
+uv run python -m mypy.stubtest pygritlib
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check . && uv run ruff check .

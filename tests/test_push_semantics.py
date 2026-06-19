@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -39,8 +39,8 @@ def _server_ref(p: SimpleNamespace, env: dict[str, str], ref: str) -> str | None
     return out or None
 
 
-def _open(p: SimpleNamespace) -> pylibgrit.Repository:
-    return pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+def _open(p: SimpleNamespace) -> pygritlib.Repository:
+    return pygritlib.Repository.open(p.local_path / ".git", p.local_path)
 
 
 def test_push_delete(git_daemon_push) -> None:
@@ -85,9 +85,9 @@ def test_push_lease_stale_rejected(git_daemon_push) -> None:
     # tip). The server must reject as stale. This exercises the lease path in PushSpec.
     p, env = git_daemon_push, git_daemon_push.env
     new = _commit(p.local_path, env, "b.txt", "two\n")
-    wrong = pylibgrit.ObjectId.from_hex(new)  # != server's base_oid -> stale
-    spec = pylibgrit.PushSpec(
-        b"refs/heads/main", src=pylibgrit.ObjectId.from_hex(new), expected_old=wrong
+    wrong = pygritlib.ObjectId.from_hex(new)  # != server's base_oid -> stale
+    spec = pygritlib.PushSpec(
+        b"refs/heads/main", src=pygritlib.ObjectId.from_hex(new), expected_old=wrong
     )
     report = _open(p).push(p.repo_url, [spec])
     assert not report.ok
@@ -100,10 +100,10 @@ def test_push_lease_fresh_accepted(git_daemon_push) -> None:
     # succeed and update the server ref.
     p, env = git_daemon_push, git_daemon_push.env
     new = _commit(p.local_path, env, "b.txt", "two\n")
-    spec = pylibgrit.PushSpec(
+    spec = pygritlib.PushSpec(
         b"refs/heads/main",
-        src=pylibgrit.ObjectId.from_hex(new),
-        expected_old=pylibgrit.ObjectId.from_hex(p.base_oid),  # correct current value
+        src=pygritlib.ObjectId.from_hex(new),
+        expected_old=pygritlib.ObjectId.from_hex(p.base_oid),  # correct current value
     )
     report = _open(p).push(p.repo_url, [spec])
     assert report.ok

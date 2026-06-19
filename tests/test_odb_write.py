@@ -9,7 +9,7 @@ def _init(repo, env):
 
 
 def test_write_blob_matches_git_hash_object(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
@@ -28,8 +28,8 @@ def test_write_blob_matches_git_hash_object(tmp_path, git_env):
         .strip()
     )
 
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    oid = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    oid = pg.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
     assert oid.hex == git_oid
     # and it is actually on disk / readable
     assert pg.odb.read(oid).data == b"hello\n"
@@ -38,23 +38,23 @@ def test_write_blob_matches_git_hash_object(tmp_path, git_env):
 
 
 def test_hash_computes_without_writing(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    oid = pg.odb.hash(pylibgrit.ObjectKind.BLOB, b"nope\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    oid = pg.odb.hash(pygritlib.ObjectKind.BLOB, b"nope\n")
     assert pg.odb.exists(oid) is False  # hash() must not write
 
 
 def test_write_is_idempotent(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    a = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"dup\n")
-    b = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"dup\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    a = pg.odb.write(pygritlib.ObjectKind.BLOB, b"dup\n")
+    b = pg.odb.write(pygritlib.ObjectKind.BLOB, b"dup\n")
     assert a == b

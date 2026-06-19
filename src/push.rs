@@ -18,7 +18,7 @@ use crate::net_transport::{
 // bytes); grit's PushRefSpec.dst is a String, so `dst` is converted to UTF-8 when building the spec
 // (non-UTF-8 dst → ValueError). `src=None` means a deletion. `expected_old`/`expect_absent` are the
 // force-with-lease knobs. Frozen + getters (immutable value object); `#[new]` is the constructor.
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushSpec {
     src: Option<grit_lib::objects::ObjectId>,
     dst: Vec<u8>,
@@ -95,7 +95,7 @@ impl PushSpec {
 // AIDEV-NOTE: One per-ref push result (output, frozen). Ref names bytes; oids ObjectId; `status` is
 // the lower-kebab PushRefStatus name; `message` is the server's `ng <ref> <reason>` text (remote
 // rejections).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushRefResult {
     local_ref: Option<Vec<u8>>,
     remote_ref: Vec<u8>,
@@ -144,7 +144,7 @@ impl PushRefResult {
 }
 
 // AIDEV-NOTE: The result of a push: per-ref results + an `ok` convenience (every ref ok/up-to-date).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushReport {
     results: Vec<Py<PushRefResult>>,
     ok: bool,

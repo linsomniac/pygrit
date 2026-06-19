@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 USER, PW = "alice", "s3cret"
@@ -33,7 +33,7 @@ def _advance(local: Path, env: dict[str, str]) -> str:
 def test_auth_push_with_kwargs(http_auth_push_server) -> None:
     p, env = http_auth_push_server, http_auth_push_server.env
     new = _advance(p.local_path, env)
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(
         p.repo_url, ["main"], username=USER, password=PW, use_credential_helpers=False
     )
@@ -47,6 +47,6 @@ def test_auth_push_with_kwargs(http_auth_push_server) -> None:
 def test_auth_push_missing_credentials_raises(http_auth_push_server) -> None:
     p, env = http_auth_push_server, http_auth_push_server.env
     _advance(p.local_path, env)
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
-    with pytest.raises(pylibgrit.AuthenticationError):
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
+    with pytest.raises(pygritlib.AuthenticationError):
         repo.push(p.repo_url, ["main"], use_credential_helpers=False)

@@ -13,14 +13,14 @@ def _git(repo, env, *args):
 
 def test_init_commit_checkout_merge_end_to_end(tmp_path, git_env):
     """init -> stage -> commit_index -> checkout -> branch -> merge -> commit merge."""
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work), initial_branch=b"main")
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
+    repo = pygritlib.Repository.init(str(work), initial_branch=b"main")
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
 
     # base commit on main
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"base\n")
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"base\n")
     idx = repo.index()
     idx.add(b"f.txt", blob, 0o100644)
     idx.write()
@@ -31,14 +31,14 @@ def test_init_commit_checkout_merge_end_to_end(tmp_path, git_env):
     assert (work / "f.txt").read_bytes() == b"base\n"
 
     # ours: add a.txt on main
-    ba = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"a\n")
+    ba = repo.odb.write(pygritlib.ObjectKind.BLOB, b"a\n")
     idx.add(b"a.txt", ba, 0o100644)
     idx.write()
     ours = repo.commit_index(message=b"A\n", author=sig, committer=sig)
 
     # theirs: a side branch off base that adds b.txt
     repo.update_ref(b"refs/heads/feat", base, create=True)
-    bb = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"b\n")
+    bb = repo.odb.write(pygritlib.ObjectKind.BLOB, b"b\n")
     fidx = repo.index()
     fidx.add(b"f.txt", blob, 0o100644)
     fidx.add(b"b.txt", bb, 0o100644)

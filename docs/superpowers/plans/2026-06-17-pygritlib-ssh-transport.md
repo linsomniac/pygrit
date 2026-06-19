@@ -1,4 +1,4 @@
-# pylibgrit SSH Transport Implementation Plan
+# pygritlib SSH Transport Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,11 +8,11 @@
 
 **Tech Stack:** PyO3 0.23 (abi3) over grit-lib 0.4.1; maturin; pytest with a fake-ssh shim fixture.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-17-pylibgrit-ssh-transport-design.md`
+**Reference spec:** `docs/superpowers/specs/2026-06-17-pygritlib-ssh-transport-design.md`
 
 **Conventions for every task:**
 - Rust changes require a rebuild before pytest: `uv run maturin develop --uv --locked`
-- The 7 gates must be green before each commit: `uv run pytest -q`; `uv run mypy python tests`; `uv run python -m mypy.stubtest pylibgrit`; `cargo fmt --check`; `cargo clippy --all-targets --locked -- -D warnings`; `uv run ruff format --check`; `uv run ruff check`
+- The 7 gates must be green before each commit: `uv run pytest -q`; `uv run mypy python tests`; `uv run python -m mypy.stubtest pygritlib`; `cargo fmt --check`; `cargo clippy --all-targets --locked -- -D warnings`; `uv run ruff format --check`; `uv run ruff check`
 - Connections are `!Send`: always construct **and** consume them inside one `py.allow_threads(...)` closure.
 
 ---
@@ -23,7 +23,7 @@
 - **`src/remote.rs`** (modify) — `read_advertisement_ssh`; `ls_remote`/`fetch_raw`/`fetch_method`/`clone_impl` gain `ssh_command` + ssh arms/guards.
 - **`src/push.rs`** (modify) — `push_method` gains `ssh_command` + ssh arm/guard.
 - **`src/repository.rs`** (modify) — `clone`/`fetch`/`push` kwargs.
-- **`python/pylibgrit/__init__.pyi`** (modify) — `ssh_command` in the four stubs.
+- **`python/pygritlib/__init__.pyi`** (modify) — `ssh_command` in the four stubs.
 - **`tests/conftest.py`** (modify) — the `ssh_server` shim fixture.
 - **`tests/test_ssh.py`** (create) — all ssh tests.
 - **`Cargo.toml`, `Cargo.lock`, `README.md`, `CHANGELOG.md`** (modify) — 0.5.0 release.
@@ -36,7 +36,7 @@
 - Modify: `src/net_transport.rs`
 - Modify: `src/remote.rs` (`read_advertisement` area ~51-58; `ls_remote` ~64-120; `fetch_raw` match ~217-240; imports line 11)
 - Modify: `src/push.rs` (`push_method` match ~352-373; imports line 13)
-- Modify: `python/pylibgrit/__init__.pyi` (`ls_remote` ~553-560)
+- Modify: `python/pygritlib/__init__.pyi` (`ls_remote` ~553-560)
 - Modify: `tests/conftest.py` (add fixture)
 - Create: `tests/test_ssh.py`
 
@@ -106,11 +106,11 @@ from __future__ import annotations
 
 import pytest
 
-import pylibgrit
+import pygritlib
 
 
 def test_ls_remote_ssh_with_command(ssh_server) -> None:
-    refs = pylibgrit.ls_remote(
+    refs = pygritlib.ls_remote(
         ssh_server.repo_url, ssh_command=ssh_server.ssh_command
     )
     names = {r.name for r in refs}
@@ -120,20 +120,20 @@ def test_ls_remote_ssh_with_command(ssh_server) -> None:
 
 
 def test_ls_remote_ssh_scp_style(ssh_server) -> None:
-    refs = pylibgrit.ls_remote(ssh_server.scp_url, ssh_command=ssh_server.ssh_command)
+    refs = pygritlib.ls_remote(ssh_server.scp_url, ssh_command=ssh_server.ssh_command)
     assert any(r.name == b"refs/heads/main" for r in refs)
 
 
 def test_ls_remote_ssh_auto_via_env(ssh_server, monkeypatch) -> None:
     # ssh_command=None -> Auto -> resolves GIT_SSH_COMMAND from the environment.
     monkeypatch.setenv("GIT_SSH_COMMAND", ssh_server.ssh_command)
-    refs = pylibgrit.ls_remote(ssh_server.repo_url)
+    refs = pygritlib.ls_remote(ssh_server.repo_url)
     assert any(r.name == b"refs/heads/main" for r in refs)
 
 
 def test_ls_remote_ssh_rejects_credentials(ssh_server) -> None:
     with pytest.raises(ValueError):
-        pylibgrit.ls_remote(
+        pygritlib.ls_remote(
             ssh_server.repo_url,
             username="bob",
             ssh_command=ssh_server.ssh_command,
@@ -220,7 +220,7 @@ pub(crate) fn ssh_connect(
     build_ssh_transport(ssh_command).connect(url, Service::UploadPack, &opts)
 }
 
-// AIDEV-NOTE: ssh auth (keys/agent/known_hosts) is the ssh subprocess's job, never pylibgrit's. The
+// AIDEV-NOTE: ssh auth (keys/agent/known_hosts) is the ssh subprocess's job, never pygritlib's. The
 // http-only `username`/`password` kwargs do not apply to ssh URLs; passing either with an ssh URL is
 // almost certainly a mistake, so fail loud. `use_credential_helpers` (http-only) is left alone.
 pub(crate) fn reject_creds_for_ssh(
@@ -316,7 +316,7 @@ In the `push_method` match (after the `Scheme::Http` arm, ~line 372), add a temp
         }
 ```
 
-- [ ] **Step 7: Update the `ls_remote` stub in `python/pylibgrit/__init__.pyi`**
+- [ ] **Step 7: Update the `ls_remote` stub in `python/pygritlib/__init__.pyi`**
 
 Add `ssh_command: str | None = None` as the last parameter of the `ls_remote` stub (after `tags: bool = False`):
 
@@ -340,13 +340,13 @@ Expected: PASS (4 passed).
 
 - [ ] **Step 9: Run all gates**
 
-Run: `uv run pytest -q && uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && uv run ruff format --check && uv run ruff check`
+Run: `uv run pytest -q && uv run mypy python tests && uv run python -m mypy.stubtest pygritlib && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && uv run ruff format --check && uv run ruff check`
 Expected: all green.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/net_transport.rs src/remote.rs src/push.rs python/pylibgrit/__init__.pyi tests/conftest.py tests/test_ssh.py
+git add src/net_transport.rs src/remote.rs src/push.rs python/pygritlib/__init__.pyi tests/conftest.py tests/test_ssh.py
 git commit -m "feat: ssh transport foundation + ls_remote over ssh
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -359,7 +359,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/remote.rs` (`fetch_raw` ~208-242; `fetch_method` ~294-317; `clone_impl` ~376-400)
 - Modify: `src/repository.rs` (`clone` ~125-148; `fetch` ~1006-1031)
-- Modify: `python/pylibgrit/__init__.pyi` (`clone`, `fetch` stubs)
+- Modify: `python/pygritlib/__init__.pyi` (`clone`, `fetch` stubs)
 - Modify: `tests/test_ssh.py`
 
 - [ ] **Step 1: Write the failing tests (append to `tests/test_ssh.py`)**
@@ -386,7 +386,7 @@ def _commit(local, env, name: str, body: str) -> None:
 
 def test_clone_over_ssh(ssh_server, tmp_path) -> None:
     dest = tmp_path / "cloned"
-    repo = pylibgrit.Repository.clone(
+    repo = pygritlib.Repository.clone(
         ssh_server.repo_url, dest, ssh_command=ssh_server.ssh_command
     )
     assert (dest / "a.txt").read_text() == "hello\n"
@@ -404,7 +404,7 @@ def test_fetch_over_ssh(ssh_server) -> None:
         .decode()
         .strip()
     )
-    repo = pylibgrit.Repository.open(
+    repo = pygritlib.Repository.open(
         ssh_server.local_path / ".git", ssh_server.local_path
     )
     report = repo.fetch(ssh_server.repo_url, ssh_command=ssh_server.ssh_command)
@@ -414,7 +414,7 @@ def test_fetch_over_ssh(ssh_server) -> None:
 
 def test_clone_over_ssh_rejects_credentials(ssh_server, tmp_path) -> None:
     with pytest.raises(ValueError):
-        pylibgrit.Repository.clone(
+        pygritlib.Repository.clone(
             ssh_server.repo_url,
             tmp_path / "x",
             password="secret",
@@ -424,7 +424,7 @@ def test_clone_over_ssh_rejects_credentials(ssh_server, tmp_path) -> None:
 
 
 def test_fetch_over_ssh_rejects_credentials(ssh_server) -> None:
-    repo = pylibgrit.Repository.open(
+    repo = pygritlib.Repository.open(
         ssh_server.local_path / ".git", ssh_server.local_path
     )
     with pytest.raises(ValueError):
@@ -603,7 +603,7 @@ and the internal `fetch_raw` call (step 3 inside `clone_impl`):
     }
 ```
 
-- [ ] **Step 6: Update the `clone` and `fetch` stubs in `python/pylibgrit/__init__.pyi`**
+- [ ] **Step 6: Update the `clone` and `fetch` stubs in `python/pygritlib/__init__.pyi`**
 
 Add `ssh_command: str | None = None` as the last keyword parameter of both the `clone` and `fetch` stubs (after their `use_credential_helpers: bool = True`).
 
@@ -617,7 +617,7 @@ Expected: PASS (8 passed total).
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/remote.rs src/repository.rs python/pylibgrit/__init__.pyi tests/test_ssh.py
+git add src/remote.rs src/repository.rs python/pygritlib/__init__.pyi tests/test_ssh.py
 git commit -m "feat: fetch & clone over ssh
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -631,7 +631,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `src/net_transport.rs` (add `ssh_connect_receive`)
 - Modify: `src/push.rs` (`push_method` ~320-375; import line 13)
 - Modify: `src/repository.rs` (`push` ~1037-1069)
-- Modify: `python/pylibgrit/__init__.pyi` (`push` stub)
+- Modify: `python/pygritlib/__init__.pyi` (`push` stub)
 - Modify: `tests/test_ssh.py`
 
 - [ ] **Step 1: Write the failing tests (append to `tests/test_ssh.py`)**
@@ -646,7 +646,7 @@ def test_push_over_ssh(ssh_server) -> None:
         .decode()
         .strip()
     )
-    repo = pylibgrit.Repository.open(
+    repo = pygritlib.Repository.open(
         ssh_server.local_path / ".git", ssh_server.local_path
     )
     report = repo.push(
@@ -662,7 +662,7 @@ def test_push_over_ssh(ssh_server) -> None:
 
 
 def test_push_over_ssh_rejects_credentials(ssh_server) -> None:
-    repo = pylibgrit.Repository.open(
+    repo = pygritlib.Repository.open(
         ssh_server.local_path / ".git", ssh_server.local_path
     )
     with pytest.raises(ValueError):
@@ -789,7 +789,7 @@ Note: `username`/`password` remain consumed only by the `Scheme::Http` arm; `rej
     }
 ```
 
-- [ ] **Step 6: Update the `push` stub in `python/pylibgrit/__init__.pyi`**
+- [ ] **Step 6: Update the `push` stub in `python/pygritlib/__init__.pyi`**
 
 Add `ssh_command: str | None = None` as the last keyword parameter of the `push` stub (after `progress: ...`).
 
@@ -803,7 +803,7 @@ Expected: PASS (10 passed total).
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/net_transport.rs src/push.rs src/repository.rs python/pylibgrit/__init__.pyi tests/test_ssh.py
+git add src/net_transport.rs src/push.rs src/repository.rs python/pygritlib/__init__.pyi tests/test_ssh.py
 git commit -m "feat: push over ssh
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -815,7 +815,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `Cargo.toml` (version line 3)
-- Modify: `Cargo.lock` (the `pylibgrit` package version)
+- Modify: `Cargo.lock` (the `pygritlib` package version)
 - Modify: `README.md` (the "### Supported transports" subsection ~line 245)
 - Modify: `CHANGELOG.md` (new top entry)
 
@@ -830,15 +830,15 @@ version = "0.5.0"
 - [ ] **Step 2: Update `Cargo.lock`**
 
 Run: `cargo build`
-This regenerates the `pylibgrit` entry in `Cargo.lock` to 0.5.0. Verify with
-`grep -A1 'name = "pylibgrit"' Cargo.lock` showing `version = "0.5.0"`.
+This regenerates the `pygritlib` entry in `Cargo.lock` to 0.5.0. Verify with
+`grep -A1 'name = "pygritlib"' Cargo.lock` showing `version = "0.5.0"`.
 
 - [ ] **Step 3: Add SSH to the README "### Supported transports" subsection**
 
 Read `README.md` around line 245 first, then add an `ssh://` bullet alongside the existing git:// / https bullets and a short paragraph. Insert after the existing transports list:
 
 ```markdown
-- **`ssh://`, `git+ssh://`, and scp-style `user@host:path`** — pylibgrit spawns the
+- **`ssh://`, `git+ssh://`, and scp-style `user@host:path`** — pygritlib spawns the
   system `ssh` (no embedded SSH library). Authentication (keys, ssh-agent, `known_hosts`,
   `~/.ssh/config`) is entirely `ssh`'s job; put the user in the URL (`ssh://user@host/...`).
   The `username=`/`password=` kwargs do **not** apply to ssh URLs and raise `ValueError`.
@@ -846,7 +846,7 @@ Read `README.md` around line 245 first, then add an `ssh://` bullet alongside th
   The ssh program is configurable per call with `ssh_command=` — a shell command line run
   via `sh -c`, exactly like Git's `GIT_SSH_COMMAND`
   (e.g. `ssh_command="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"`). When omitted,
-  pylibgrit follows Git's default precedence: `$GIT_SSH_COMMAND`, then `$GIT_SSH`, then `ssh`.
+  pygritlib follows Git's default precedence: `$GIT_SSH_COMMAND`, then `$GIT_SSH`, then `ssh`.
   `ls_remote`, `clone`, `fetch`, and `push` all accept `ssh_command=`.
 ```
 
@@ -860,7 +860,7 @@ Insert above the `## [0.4.0] - 2026-06-17` entry in `CHANGELOG.md`:
 ### Added
 
 - **SSH transport** — `ls_remote`, `clone`, `fetch`, and `push` now support `ssh://`,
-  `git+ssh://`, and scp-style `user@host:path` URLs. pylibgrit spawns the system `ssh`
+  `git+ssh://`, and scp-style `user@host:path` URLs. pygritlib spawns the system `ssh`
   (no embedded SSH library); authentication (keys, ssh-agent, `known_hosts`) is handled
   entirely by `ssh`.
   - New `ssh_command=` keyword on all four entry points: a shell command line run via

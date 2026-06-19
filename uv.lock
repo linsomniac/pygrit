@@ -255,7 +255,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pylibgrit"
+name = "pygritlib"
 source = { editable = "." }
 
 [package.dev-dependencies]

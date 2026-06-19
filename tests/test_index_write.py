@@ -16,13 +16,13 @@ def _ls_files_stage(repo, env):
 
 
 def test_index_add_and_write_persists(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    blob = pg.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
 
     idx = pg.index()
     idx.add(b"a.txt", blob, 0o100644)
@@ -35,13 +35,13 @@ def test_index_add_and_write_persists(tmp_path, git_env):
 
 
 def test_index_remove(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    blob = pg.odb.write(pygritlib.ObjectKind.BLOB, b"x\n")
     idx = pg.index()
     idx.add(b"a.txt", blob, 0o100644)
     assert idx.remove(b"a.txt") is True
@@ -51,27 +51,27 @@ def test_index_remove(tmp_path, git_env):
 
 
 def test_index_add_entry_raw(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"y\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    blob = pg.odb.write(pygritlib.ObjectKind.BLOB, b"y\n")
     idx = pg.index()
-    idx.add_entry(pylibgrit.IndexEntry(b"b.txt", blob, 0o100644))
+    idx.add_entry(pygritlib.IndexEntry(b"b.txt", blob, 0o100644))
     idx.write()
     assert "b.txt" in _ls_files_stage(repo, git_env)
 
 
 def test_write_tree_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    blob = pg.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
 
     idx = pg.index()
     idx.add(b"a.txt", blob, 0o100644)
@@ -93,14 +93,14 @@ def test_write_tree_matches_git(tmp_path, git_env):
 
 
 def test_stage_real_file_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     (repo / "a.txt").write_text("hello\n")
 
-    pg = pylibgrit.Repository.open(str(repo / ".git"), str(repo))
+    pg = pygritlib.Repository.open(str(repo / ".git"), str(repo))
     idx = pg.index()
     idx.stage(b"a.txt")
     idx.write()
@@ -123,7 +123,7 @@ def test_stage_real_file_matches_git(tmp_path, git_env):
 
 def test_stage_executable_bit(tmp_path, git_env):
     import os
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
@@ -132,7 +132,7 @@ def test_stage_executable_bit(tmp_path, git_env):
     script.write_text("#!/bin/sh\n")
     os.chmod(script, 0o755)
 
-    pg = pylibgrit.Repository.open(str(repo / ".git"), str(repo))
+    pg = pygritlib.Repository.open(str(repo / ".git"), str(repo))
     idx = pg.index()
     idx.stage(b"run.sh")
     idx.write()
@@ -142,26 +142,26 @@ def test_stage_executable_bit(tmp_path, git_env):
 
 
 def test_stage_bare_repo_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
     import pytest
 
     repo = tmp_path / "r.git"
     subprocess.run(["git", "init", "-q", "--bare", str(repo)], env=git_env, check=True)
-    pg = pylibgrit.Repository.open(str(repo))
+    pg = pygritlib.Repository.open(str(repo))
     idx = pg.index()
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         idx.stage(b"a.txt")
 
 
 def test_index_len_and_iter(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    b1 = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"1\n")
-    b2 = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"2\n")
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    b1 = pg.odb.write(pygritlib.ObjectKind.BLOB, b"1\n")
+    b2 = pg.odb.write(pygritlib.ObjectKind.BLOB, b"2\n")
     idx = pg.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.add(b"b.txt", b2, 0o100644)

@@ -140,7 +140,7 @@ pub(crate) fn ssh_connect_receive(
     build_ssh_transport(ssh_command).connect(url, Service::ReceivePack, &opts)
 }
 
-// AIDEV-NOTE: ssh auth (keys/agent/known_hosts) is the ssh subprocess's job, never pylibgrit's. The
+// AIDEV-NOTE: ssh auth (keys/agent/known_hosts) is the ssh subprocess's job, never pygritlib's. The
 // http-only `username`/`password` kwargs do not apply to ssh URLs; passing either with an ssh URL is
 // almost certainly a mistake, so fail loud. `use_credential_helpers` (http-only) is left alone.
 pub(crate) fn reject_creds_for_ssh(

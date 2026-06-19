@@ -14,16 +14,16 @@ def _git(repo, env, *args):
 
 
 def test_commit_index_first_commit_unborn(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    repo = pygritlib.Repository.init(str(work))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     idx.write()
-    sig = pylibgrit.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
-    com = pylibgrit.Signature(
+    sig = pygritlib.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
+    com = pygritlib.Signature(
         b"Test Committer", b"committer@example.com", (1112911993, 0)
     )
     oid = repo.commit_index(message=b"initial\n", author=sig, committer=com)
@@ -45,17 +45,17 @@ def test_commit_index_first_commit_unborn(tmp_path, git_env):
 
 
 def test_commit_index_advances_with_parent(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
     c1 = repo.commit_index(message=b"one\n", author=sig, committer=sig)
-    b2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"two\n")
+    b2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"two\n")
     idx.add(b"a.txt", b2, 0o100644)
     idx.write()
     c2 = repo.commit_index(message=b"two\n", author=sig, committer=sig)
@@ -77,12 +77,12 @@ def test_commit_index_advances_with_parent(tmp_path, git_env):
 
 
 def test_commit_index_merge_extra_parents(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
@@ -90,7 +90,7 @@ def test_commit_index_merge_extra_parents(tmp_path, git_env):
     side = repo.create_commit(
         repo.commit(c1).tree, parents=[c1], author=sig, committer=sig, message=b"side\n"
     )
-    b2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"merged\n")
+    b2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"merged\n")
     idx.add(b"a.txt", b2, 0o100644)
     idx.write()
     merge = repo.commit_index(
@@ -111,12 +111,12 @@ def test_commit_index_merge_extra_parents(tmp_path, git_env):
 
 
 def test_commit_index_detached_head_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1112911993, 0))
-    b1 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"one\n")
+    repo = pygritlib.Repository.init(str(work))
+    sig = pygritlib.Signature(b"A", b"a@x", (1112911993, 0))
+    b1 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"one\n")
     idx = repo.index()
     idx.add(b"a.txt", b1, 0o100644)
     idx.write()
@@ -124,22 +124,22 @@ def test_commit_index_detached_head_raises(tmp_path, git_env):
     subprocess.run(
         ["git", "checkout", "-q", "--detach"], cwd=work, env=git_env, check=True
     )
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.commit_index(message=b"x\n", author=sig, committer=sig)
 
 
 def test_commit_index_oid_matches_git_commit_tree(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
-    repo = pylibgrit.Repository.init(str(work))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    repo = pygritlib.Repository.init(str(work))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     idx.write()
     # Pin identity + time to match the git oracle below (epoch 1112911993, +0000).
-    sig = pylibgrit.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
-    com = pylibgrit.Signature(
+    sig = pygritlib.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
+    com = pygritlib.Signature(
         b"Test Committer", b"committer@example.com", (1112911993, 0)
     )
     oid = repo.commit_index(message=b"initial\n", author=sig, committer=com)

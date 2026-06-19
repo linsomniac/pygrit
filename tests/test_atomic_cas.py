@@ -4,20 +4,20 @@ import pytest
 
 
 def _repo_with_main(tmp_path):
-    import pylibgrit
+    import pygritlib
 
-    repo = pylibgrit.Repository.init(str(tmp_path / "r"))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    repo = pygritlib.Repository.init(str(tmp_path / "r"))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"x\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     idx.write()
     tree = idx.write_tree()
-    sig = pylibgrit.Signature(b"A", b"a@x", (1700000000, 0))
+    sig = pygritlib.Signature(b"A", b"a@x", (1700000000, 0))
     c1 = repo.create_commit(
         tree, parents=[], author=sig, committer=sig, message=b"c1\n"
     )
     repo.update_ref(b"refs/heads/main", c1, create=True)
-    blob2 = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"y\n")
+    blob2 = repo.odb.write(pygritlib.ObjectKind.BLOB, b"y\n")
     idx.add(b"a.txt", blob2, 0o100644)
     tree2 = idx.write_tree()
     c2 = repo.create_commit(
@@ -27,10 +27,10 @@ def _repo_with_main(tmp_path):
 
 
 def test_cas_mismatch_raises_and_leaves_ref(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.update_ref(b"refs/heads/main", c2, expected_old=c2)
     assert repo.resolve("refs/heads/main") == c1
 
@@ -42,20 +42,20 @@ def test_cas_success_advances(tmp_path):
 
 
 def test_create_only_on_existing_raises(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.update_ref(b"refs/heads/main", c2, create=True)
 
 
 def test_preexisting_lock_is_contention_error(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     lock = tmp_path / "r" / ".git" / "refs" / "heads" / "main.lock"
     lock.write_text("")
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.update_ref(b"refs/heads/main", c2, expected_old=c1)
     # Our failed attempt left the foreign lock untouched (didn't rename it away).
     assert lock.exists()
@@ -64,7 +64,7 @@ def test_preexisting_lock_is_contention_error(tmp_path):
 
 
 def test_threaded_race_exactly_one_winner(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     results = []
@@ -75,9 +75,9 @@ def test_threaded_race_exactly_one_winner(tmp_path):
         try:
             repo.update_ref(b"refs/heads/main", c2, expected_old=c1)
             results.append(True)
-        except pylibgrit.RefMismatchError:
+        except pygritlib.RefMismatchError:
             results.append(False)
-        except pylibgrit.RepositoryError:
+        except pygritlib.RepositoryError:
             results.append(False)
 
     threads = [threading.Thread(target=attempt) for _ in range(8)]
@@ -90,20 +90,20 @@ def test_threaded_race_exactly_one_winner(tmp_path):
 
 
 def test_cas_delete_loose(tmp_path):
-    import pylibgrit
+    import pygritlib
 
     repo, c1, c2 = _repo_with_main(tmp_path)
     repo.update_ref(b"refs/tags/v1", c1, create=True)
-    with pytest.raises(pylibgrit.RefMismatchError):
+    with pytest.raises(pygritlib.RefMismatchError):
         repo.delete_ref(b"refs/tags/v1", expected_old=c2)
     assert repo.resolve("refs/tags/v1") == c1
     repo.delete_ref(b"refs/tags/v1", expected_old=c1)
-    with pytest.raises(pylibgrit.GritError):
+    with pytest.raises(pygritlib.GritError):
         repo.resolve("refs/tags/v1")
 
 
 def test_cas_delete_packed_ref(tmp_path):
-    import pylibgrit
+    import pygritlib
     import subprocess
 
     repo, c1, c2 = _repo_with_main(tmp_path)
@@ -113,12 +113,12 @@ def test_cas_delete_packed_ref(tmp_path):
     subprocess.run(["git", "pack-refs", "--all"], cwd=git_dir, check=True)
     # CAS-delete must still work (delegates packed removal to grit's delete_ref).
     repo.delete_ref(b"refs/tags/p1", expected_old=c1)
-    with pytest.raises(pylibgrit.GritError):
+    with pytest.raises(pygritlib.GritError):
         repo.resolve("refs/tags/p1")
 
 
 def test_cas_refused_on_reftable_repo(tmp_path):
-    import pylibgrit
+    import pygritlib
     import subprocess
 
     # Create an external reftable-backend repo via git (>= 2.45); skip if unsupported.
@@ -130,18 +130,18 @@ def test_cas_refused_on_reftable_repo(tmp_path):
     if res.returncode != 0:
         pytest.skip("git does not support --ref-format=reftable")
 
-    repo = pylibgrit.Repository.open(str(rt / ".git"), str(rt))
-    blob = repo.odb.write(pylibgrit.ObjectKind.BLOB, b"x\n")
+    repo = pygritlib.Repository.open(str(rt / ".git"), str(rt))
+    blob = repo.odb.write(pygritlib.ObjectKind.BLOB, b"x\n")
     idx = repo.index()
     idx.add(b"a.txt", blob, 0o100644)
     tree = idx.write_tree()
-    sig = pylibgrit.Signature(b"A", b"a@x", (1700000000, 0))
+    sig = pygritlib.Signature(b"A", b"a@x", (1700000000, 0))
     c1 = repo.create_commit(
         tree, parents=[], author=sig, committer=sig, message=b"c1\n"
     )
     # The atomic CAS/create path must REFUSE rather than write a loose file the reftable
     # reader would ignore (a silent lost update).
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         repo.update_ref(b"refs/heads/feature", c1, create=True)
 
 

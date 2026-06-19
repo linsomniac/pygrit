@@ -1,4 +1,4 @@
-# pylibgrit SSH Transport — Design
+# pygritlib SSH Transport — Design
 
 **Status:** Approved (2026-06-17)
 
@@ -69,7 +69,7 @@ crossing the GIL-release boundary), identical to the existing git:// arms.
 ## 3. Authentication & credentials model
 
 SSH authentication (keys, ssh-agent, `known_hosts`, `~/.ssh/config`) is entirely
-the **ssh subprocess's** responsibility. pylibgrit never handles ssh auth. The
+the **ssh subprocess's** responsibility. pygritlib never handles ssh auth. The
 remote user is carried in the URL (`ssh://user@host/…` or `user@host:…`).
 
 The http-only `username=` / `password=` kwargs do **not** apply to ssh URLs.
@@ -152,7 +152,7 @@ it inits the target repo directory.
 - `clone`, `fetch`, `push` methods: add `ssh_command=None` to each `#[pyo3(signature
   = …)]` and forward it to `clone_impl` / `fetch_method` / `push_method`.
 
-### `python/pylibgrit/__init__.pyi` (type stubs)
+### `python/pygritlib/__init__.pyi` (type stubs)
 
 - Add `ssh_command: str | None = None` to the stubs for `ls_remote`,
   `Repository.clone`, `Repository.fetch`, and `Repository.push`. (stubtest runs
@@ -245,7 +245,7 @@ bare repo via `git-receive-pack` needs no daemon `--enable` flag.)
 
 ## 8. Quality gates (all must stay green)
 
-`pytest -q`; `mypy python tests`; `python -m mypy.stubtest pylibgrit` (no
+`pytest -q`; `mypy python tests`; `python -m mypy.stubtest pygritlib` (no
 allowlist); `cargo fmt --check`; `cargo clippy --all-targets --locked -- -D
 warnings`; `ruff format --check`; `ruff check`. Build with
 `uv run maturin develop --uv --locked` before pytest.

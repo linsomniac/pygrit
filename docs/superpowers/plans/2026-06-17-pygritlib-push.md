@@ -1,4 +1,4 @@
-# pylibgrit Phase D — Push & Write-Networking Implementation Plan
+# pygritlib Phase D — Push & Write-Networking Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust + PyO3 0.23 (abi3), grit-lib 0.4.1 (`http-ureq` already bundled), maturin, pytest with a receive-pack-enabled `git daemon` fixture (git://) and a receive-pack-enabled `git http-backend` fixture (https), plus a server-side hook for the progress test.
 
-**Spec:** `docs/superpowers/specs/2026-06-17-pylibgrit-push-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-17-pygritlib-push-design.md`
 
 ## Build & gates (run after every code change)
 
@@ -16,13 +16,13 @@
 uv run maturin develop --uv --locked
 uv run pytest -q
 uv run mypy python tests
-uv run python -m mypy.stubtest pylibgrit      # NO allowlist
+uv run python -m mypy.stubtest pygritlib      # NO allowlist
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check
 uv run ruff check
 ```
-If `uv run` reinstalls a stale build: `uv pip install -e . --reinstall-package pylibgrit`.
+If `uv run` reinstalls a stale build: `uv pip install -e . --reinstall-package pygritlib`.
 
 **Imports note:** `clippy -D warnings` denies unused imports/dead code. Each task's code lists the symbols it uses; widen a `use` only when a symbol is first used, and don't pre-import.
 
@@ -36,7 +36,7 @@ If `uv run` reinstalls a stale build: `uv pip install -e . --reinstall-package p
 | `src/error.rs` (modify) | route `Error::PushOptionsUnsupported` → `NetworkError` |
 | `src/repository.rs` (modify) | `Repository.push` (thin delegator) |
 | `src/lib.rs` (modify) | `mod net_progress; mod push;`; register the three pyclasses |
-| `python/pylibgrit/__init__.{py,pyi}` (modify) | export + stub `PushSpec`/`PushRefResult`/`PushReport` + `Repository.push` |
+| `python/pygritlib/__init__.{py,pyi}` (modify) | export + stub `PushSpec`/`PushRefResult`/`PushReport` + `Repository.push` |
 | `tests/conftest.py` (modify) | receive-pack `git daemon` + `git http-backend` fixtures (+ a local pusher clone) |
 | `tests/test_push*.py` (new) | git:// push, semantics, https (anon+auth), progress |
 
@@ -166,7 +166,7 @@ Expected: the oracle push test PASSES (or SKIPS if `git daemon` is unavailable).
 
 ## Task 2: `repo.push` over git:// (core)
 
-**Files:** Create `src/net_progress.rs`, `src/push.rs`. Modify `src/net_transport.rs`, `src/error.rs`, `src/repository.rs`, `src/lib.rs`, `python/pylibgrit/__init__.{py,pyi}`. Test: `tests/test_push.py` (create).
+**Files:** Create `src/net_progress.rs`, `src/push.rs`. Modify `src/net_transport.rs`, `src/error.rs`, `src/repository.rs`, `src/lib.rs`, `python/pygritlib/__init__.{py,pyi}`. Test: `tests/test_push.py` (create).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -177,7 +177,7 @@ Create `tests/test_push.py`:
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -192,7 +192,7 @@ def test_push_fast_forward(git_daemon_push) -> None:
     local = git_daemon_push.local_path
     env = git_daemon_push.env
     new = _commit(local, env, "b.txt", "two\n")
-    repo = pylibgrit.Repository.open(local / ".git", local)
+    repo = pygritlib.Repository.open(local / ".git", local)
     report = repo.push(git_daemon_push.repo_url, ["main"])
     assert report.ok
     server_main = run_git(git_daemon_push.server_path, "rev-parse", "refs/heads/main", env=env).decode().strip()
@@ -208,7 +208,7 @@ def test_push_new_branch(git_daemon_push) -> None:
     env = git_daemon_push.env
     run_git(local, "checkout", "-q", "-b", "feature", env=env)
     new = _commit(local, env, "f.txt", "feat\n")
-    repo = pylibgrit.Repository.open(local / ".git", local)
+    repo = pygritlib.Repository.open(local / ".git", local)
     report = repo.push(git_daemon_push.repo_url, ["feature"])
     assert report.ok
     server = run_git(git_daemon_push.server_path, "rev-parse", "refs/heads/feature", env=env).decode().strip()
@@ -322,7 +322,7 @@ use crate::net_transport::{classify, git_connect_receive, Scheme};
 // bytes); grit's PushRefSpec.dst is a String, so `dst` is converted to UTF-8 when building the spec
 // (non-UTF-8 dst → ValueError). `src=None` means a deletion. `expected_old`/`expect_absent` are the
 // force-with-lease knobs. Frozen + getters (immutable value object); `#[new]` is the constructor.
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushSpec {
     src: Option<grit_lib::objects::ObjectId>,
     dst: Vec<u8>,
@@ -399,7 +399,7 @@ impl PushSpec {
 // AIDEV-NOTE: One per-ref push result (output, frozen). Ref names bytes; oids ObjectId; `status` is
 // the lower-kebab PushRefStatus name; `message` is the server's `ng <ref> <reason>` text (remote
 // rejections).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushRefResult {
     local_ref: Option<Vec<u8>>,
     remote_ref: Vec<u8>,
@@ -448,7 +448,7 @@ impl PushRefResult {
 }
 
 // AIDEV-NOTE: The result of a push: per-ref results + an `ok` convenience (every ref ok/up-to-date).
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct PushReport {
     results: Vec<Py<PushRefResult>>,
     ok: bool,
@@ -689,7 +689,7 @@ Inside `#[pymethods] impl Repository` (e.g. after `fetch`):
 
 - [ ] **Step 8: Register in `src/lib.rs`**
 
-Add the module declarations (with the others): `mod net_progress;` and `mod push;`. In `fn _pylibgrit`, register the three classes (after the existing `remote::` registrations):
+Add the module declarations (with the others): `mod net_progress;` and `mod push;`. In `fn _pygritlib`, register the three classes (after the existing `remote::` registrations):
 
 ```rust
     m.add_class::<push::PushSpec>()?;
@@ -699,9 +699,9 @@ Add the module declarations (with the others): `mod net_progress;` and `mod push
 
 - [ ] **Step 9: Export + stubs**
 
-In `python/pylibgrit/__init__.py`: add `PushRefResult,`, `PushReport,`, `PushSpec,` to the import block and `__all__`.
+In `python/pygritlib/__init__.py`: add `PushRefResult,`, `PushReport,`, `PushSpec,` to the import block and `__all__`.
 
-In `python/pylibgrit/__init__.pyi`: add the three to `__all__`; re-add `Callable` to the typing import (`from typing import Callable, Iterator, final`); add the class stubs (near the other value objects):
+In `python/pygritlib/__init__.pyi`: add the three to `__all__`; re-add `Callable` to the typing import (`from typing import Callable, Iterator, final`); add the class stubs (near the other value objects):
 
 ```python
 @final
@@ -781,10 +781,10 @@ and the `push` method stub inside `class Repository` (after `fetch`):
 uv run maturin develop --uv --locked
 uv run pytest tests/test_push.py -q
 uv run pytest -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
-git add src/ python/pylibgrit/ tests/test_push.py
+git add src/ python/pygritlib/ tests/test_push.py
 git commit -m "feat: repo.push over git:// (PushSpec/PushReport + progress bridge)"
 ```
 
@@ -806,7 +806,7 @@ Create `tests/test_push_semantics.py`:
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -823,7 +823,7 @@ def _server_ref(p, env, ref) -> str | None:
 
 
 def _open(p):
-    return pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    return pygritlib.Repository.open(p.local_path / ".git", p.local_path)
 
 
 def test_push_delete(git_daemon_push) -> None:
@@ -864,8 +864,8 @@ def test_push_lease_stale_rejected(git_daemon_push) -> None:
     p, env = git_daemon_push, git_daemon_push.env
     new = _commit(p.local_path, env, "b.txt", "two\n")
     # lease says the remote must currently be at a WRONG oid -> reject-stale
-    wrong = pylibgrit.ObjectId.from_hex(new)  # any non-matching oid (server is at base_oid)
-    spec = pylibgrit.PushSpec(b"refs/heads/main", src=pylibgrit.ObjectId.from_hex(new), expected_old=wrong)
+    wrong = pygritlib.ObjectId.from_hex(new)  # any non-matching oid (server is at base_oid)
+    spec = pygritlib.PushSpec(b"refs/heads/main", src=pygritlib.ObjectId.from_hex(new), expected_old=wrong)
     report = _open(p).push(p.repo_url, [spec])
     assert not report.ok
     assert report.results[0].status == "reject-stale"
@@ -875,10 +875,10 @@ def test_push_lease_stale_rejected(git_daemon_push) -> None:
 def test_push_lease_fresh_accepted(git_daemon_push) -> None:
     p, env = git_daemon_push, git_daemon_push.env
     new = _commit(p.local_path, env, "b.txt", "two\n")
-    spec = pylibgrit.PushSpec(
+    spec = pygritlib.PushSpec(
         b"refs/heads/main",
-        src=pylibgrit.ObjectId.from_hex(new),
-        expected_old=pylibgrit.ObjectId.from_hex(p.base_oid),  # correct current value
+        src=pygritlib.ObjectId.from_hex(new),
+        expected_old=pygritlib.ObjectId.from_hex(p.base_oid),  # correct current value
     )
     report = _open(p).push(p.repo_url, [spec])
     assert report.ok
@@ -950,7 +950,7 @@ Create `tests/test_push_http.py`:
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -960,7 +960,7 @@ def test_http_push(http_push_server) -> None:
     run_git(p.local_path, "add", "-A", env=env)
     run_git(p.local_path, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "-m", "c2", env=env)
     new = run_git(p.local_path, "rev-parse", "HEAD", env=env).decode().strip()
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(p.repo_url, ["main"])
     assert report.ok
     assert run_git(p.server_path, "rev-parse", "refs/heads/main", env=env).decode().strip() == new
@@ -1048,7 +1048,7 @@ def http_push_server(tmp_path: Path, git_env: dict[str, str]) -> Iterator[Simple
 ```bash
 uv run pytest tests/test_push_http.py -q -rs
 uv run pytest -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 git add tests/conftest.py tests/test_push_http.py
@@ -1073,7 +1073,7 @@ from __future__ import annotations
 
 import pytest
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 USER, PW = "alice", "s3cret"
@@ -1089,7 +1089,7 @@ def _advance(local, env) -> str:
 def test_auth_push_with_kwargs(http_auth_push_server) -> None:
     p, env = http_auth_push_server, http_auth_push_server.env
     new = _advance(p.local_path, env)
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(p.repo_url, ["main"], username=USER, password=PW, use_credential_helpers=False)
     assert report.ok
     assert run_git(p.server_path, "rev-parse", "refs/heads/main", env=env).decode().strip() == new
@@ -1098,8 +1098,8 @@ def test_auth_push_with_kwargs(http_auth_push_server) -> None:
 def test_auth_push_missing_credentials_raises(http_auth_push_server) -> None:
     p, env = http_auth_push_server, http_auth_push_server.env
     _advance(p.local_path, env)
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
-    with pytest.raises(pylibgrit.AuthenticationError):
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
+    with pytest.raises(pygritlib.AuthenticationError):
         repo.push(p.repo_url, ["main"], use_credential_helpers=False)
 ```
 
@@ -1137,7 +1137,7 @@ def http_auth_push_server(tmp_path: Path, git_env: dict[str, str]) -> Iterator[S
 ```bash
 uv run pytest tests/test_push_http_auth.py -q -rs
 uv run pytest -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 git add tests/conftest.py tests/test_push_http_auth.py
@@ -1162,7 +1162,7 @@ from __future__ import annotations
 import os
 import stat
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 MARKER = b"hello-from-hook"
@@ -1183,7 +1183,7 @@ def test_push_progress_receives_hook_output(git_daemon_push) -> None:
     run_git(p.local_path, "add", "-A", env=env)
     run_git(p.local_path, "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "-m", "c2", env=env)
     chunks: list[bytes] = []
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     report = repo.push(p.repo_url, ["main"], progress=chunks.append)
     assert report.ok
     # The hook's stdout is relayed on side-band-2 and delivered to our callback.
@@ -1203,7 +1203,7 @@ def test_push_progress_callback_exception_propagates(git_daemon_push) -> None:
     def cb(_data: bytes) -> None:
         raise Boom("stop")
 
-    repo = pylibgrit.Repository.open(p.local_path / ".git", p.local_path)
+    repo = pygritlib.Repository.open(p.local_path / ".git", p.local_path)
     with __import__("pytest").raises(Boom):
         repo.push(p.repo_url, ["main"], progress=cb)
 ```
@@ -1240,9 +1240,9 @@ In `README.md`, extend the "Networking" section with a **"Pushing"** subsection 
 
 ````markdown
 ```python
-import pylibgrit
+import pygritlib
 
-repo = pylibgrit.Repository.open("/path/to/repo/.git", "/path/to/repo")
+repo = pygritlib.Repository.open("/path/to/repo/.git", "/path/to/repo")
 
 # Push the local 'main' to a remote over https (token via kwarg or https://<token>@host/...).
 report = repo.push("https://github.com/me/repo.git", ["main"], username="x", password="TOKEN")
@@ -1254,7 +1254,7 @@ if not report.ok:
 # Force-with-lease (safe force) via a structured PushSpec:
 tip = repo.resolve("refs/heads/main")
 expected = repo.resolve("refs/remotes/origin/main")
-spec = pylibgrit.PushSpec(b"refs/heads/main", src=tip, expected_old=expected)
+spec = pygritlib.PushSpec(b"refs/heads/main", src=tip, expected_old=expected)
 repo.push("https://github.com/me/repo.git", [spec])
 
 # Delete a remote branch:
@@ -1270,14 +1270,14 @@ Add a `## [0.4.0]` section above `## [0.3.0]`: `repo.push` over git:// and https
 
 - [ ] **Step 3: Bump version to 0.4.0**
 
-In `Cargo.toml`, change `version = "0.3.0"` to `version = "0.4.0"`. Refresh `Cargo.lock` (run `uv run maturin develop --uv --locked`). Confirm `grep -n '^version' Cargo.toml` is 0.4.0 and the `pylibgrit` package in `Cargo.lock` is 0.4.0.
+In `Cargo.toml`, change `version = "0.3.0"` to `version = "0.4.0"`. Refresh `Cargo.lock` (run `uv run maturin develop --uv --locked`). Confirm `grep -n '^version' Cargo.toml` is 0.4.0 and the `pygritlib` package in `Cargo.lock` is 0.4.0.
 
 - [ ] **Step 4: Full suite + gates**
 
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 ```

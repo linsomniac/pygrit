@@ -1,4 +1,4 @@
-# pylibgrit Phase D — Push & Write-Networking — Design
+# pygritlib Phase D — Push & Write-Networking — Design
 
 **Status:** Approved (2026-06-17)
 **Depends on:** Phase A (write-core 0.2.0) + Phase B (worktree & merge) + Phase C (read-path networking 0.3.0).

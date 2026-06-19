@@ -42,7 +42,7 @@ pub(crate) fn validate_index_path(path: &[u8]) -> PyResult<()> {
 // base_index_pos always 0 (split-index is not a Phase A concern). `flags` defaults to 0; the
 // index serializer recomputes the low 12 bits (path length) on write, so 0 is safe for a
 // normal stage-0 entry.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct IndexEntry {
     pub(crate) inner: grit_lib::index::IndexEntry,
 }
@@ -138,7 +138,7 @@ impl IndexEntry {
 // reach the odb and write() can target the repo's default index path. Index methods run UNDER the
 // GIL: a std MutexGuard is !Send and cannot be held across allow_threads, and Phase A index ops
 // are fast enough that this is fine.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct Index {
     inner: Mutex<grit_lib::index::Index>,
     repo: Arc<grit_lib::repo::Repository>,
@@ -295,7 +295,7 @@ impl Index {
 }
 
 /// Iterator over a snapshot of an `Index`'s entries; owns its data.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct IndexEntryIter {
     entries: Arc<[grit_lib::index::IndexEntry]>,
     idx: usize,

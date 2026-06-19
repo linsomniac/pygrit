@@ -1,8 +1,8 @@
 def test_exception_hierarchy():
-    import pylibgrit
+    import pygritlib
 
-    assert issubclass(pylibgrit.RepositoryError, pylibgrit.GritError)
-    assert issubclass(pylibgrit.ObjectNotFoundError, pylibgrit.GritError)
-    assert issubclass(pylibgrit.InvalidObjectError, pylibgrit.GritError)
-    assert pylibgrit.GritError is not pylibgrit.RepositoryError
-    assert not issubclass(pylibgrit.ObjectNotFoundError, pylibgrit.RepositoryError)
+    assert issubclass(pygritlib.RepositoryError, pygritlib.GritError)
+    assert issubclass(pygritlib.ObjectNotFoundError, pygritlib.GritError)
+    assert issubclass(pygritlib.InvalidObjectError, pygritlib.GritError)
+    assert pygritlib.GritError is not pygritlib.RepositoryError
+    assert not issubclass(pygritlib.ObjectNotFoundError, pygritlib.RepositoryError)

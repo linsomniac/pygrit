@@ -22,18 +22,18 @@ def _empty_tree(repo, env):
 
 
 def test_create_commit_matches_git_commit_tree(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     tree_hex = _empty_tree(repo, git_env)
 
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    tree = pylibgrit.ObjectId.from_hex(tree_hex)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    tree = pygritlib.ObjectId.from_hex(tree_hex)
     # Pin the same identity + time git uses below (epoch 1112911993, +0000).
-    sig = pylibgrit.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
-    committer = pylibgrit.Signature(
+    sig = pygritlib.Signature(b"Test Author", b"author@example.com", (1112911993, 0))
+    committer = pygritlib.Signature(
         b"Test Committer", b"committer@example.com", (1112911993, 0)
     )
     commit = pg.create_commit(
@@ -64,14 +64,14 @@ def test_create_commit_matches_git_commit_tree(tmp_path, git_env):
 
 
 def test_create_commit_author_raw_byte_exact(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     tree_hex = _empty_tree(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    tree = pylibgrit.ObjectId.from_hex(tree_hex)
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    tree = pygritlib.ObjectId.from_hex(tree_hex)
 
     ident = b"Test Author <author@example.com> 1112911993 +0000"
     commit = pg.create_commit(
@@ -105,15 +105,15 @@ def test_create_commit_author_raw_byte_exact(tmp_path, git_env):
 
 
 def test_create_commit_multi_parent(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     tree_hex = _empty_tree(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    tree = pylibgrit.ObjectId.from_hex(tree_hex)
-    sig = pylibgrit.Signature(b"A", b"a@x", (1, 0))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    tree = pygritlib.ObjectId.from_hex(tree_hex)
+    sig = pygritlib.Signature(b"A", b"a@x", (1, 0))
     p1 = pg.create_commit(tree, parents=[], author=sig, committer=sig, message=b"p1\n")
     p2 = pg.create_commit(tree, parents=[], author=sig, committer=sig, message=b"p2\n")
     merge = pg.create_commit(
@@ -123,14 +123,14 @@ def test_create_commit_multi_parent(tmp_path, git_env):
 
 
 def test_create_commit_rejects_both_author_forms(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    tree = pylibgrit.ObjectId.from_hex(_empty_tree(repo, git_env))
-    sig = pylibgrit.Signature(b"A", b"a@x", (1, 0))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    tree = pygritlib.ObjectId.from_hex(_empty_tree(repo, git_env))
+    sig = pygritlib.Signature(b"A", b"a@x", (1, 0))
     with pytest.raises(ValueError):
         pg.create_commit(
             tree,

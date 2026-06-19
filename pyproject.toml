@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "pylibgrit"
+name = "pygritlib"
 description = "Python bindings for grit-lib (a Rust reimplementation of Git)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -17,12 +17,12 @@ classifiers = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/linsomniac/pylibgrit"
-Repository = "https://github.com/linsomniac/pylibgrit"
-Issues = "https://github.com/linsomniac/pylibgrit/issues"
+Homepage = "https://github.com/linsomniac/pygritlib"
+Repository = "https://github.com/linsomniac/pygritlib"
+Issues = "https://github.com/linsomniac/pygritlib/issues"
 
 [tool.maturin]
-module-name = "pylibgrit._pylibgrit"
+module-name = "pygritlib._pygritlib"
 python-source = "python"
 features = ["pyo3/extension-module"]
 
@@ -32,11 +32,11 @@ pythonpath = ["."]
 [tool.mypy]
 python_version = "3.11"
 
-# AIDEV-NOTE: The native extension `pylibgrit._pylibgrit` ships no stub of its own;
-# the hand-written python/pylibgrit/__init__.pyi provides the typed public API.
+# AIDEV-NOTE: The native extension `pygritlib._pygritlib` ships no stub of its own;
+# the hand-written python/pygritlib/__init__.pyi provides the typed public API.
 # This override silences the otherwise-unavoidable missing-stub error.
 [[tool.mypy.overrides]]
-module = "pylibgrit._pylibgrit"
+module = "pygritlib._pygritlib"
 ignore_missing_imports = true
 
 [dependency-groups]

@@ -1,10 +1,10 @@
-# pylibgrit
+# pygritlib
 
 Native Python bindings for [`grit-lib`](https://crates.io/crates/grit-lib) — the
 core Rust library of [gitbutlerapp/grit](https://github.com/gitbutlerapp/grit), a
-from-scratch reimplementation of Git in Rust. pylibgrit is built with
+from-scratch reimplementation of Git in Rust. pygritlib is built with
 [PyO3](https://pyo3.rs) and packaged as an `abi3` wheel with
-[maturin](https://maturin.rs). pylibgrit is a thin Python façade over grit-lib
+[maturin](https://maturin.rs). pygritlib is a thin Python façade over grit-lib
 covering **reading** — discover/open repositories, read objects (commit/tree/blob/tag),
 list and resolve references, walk history, diff commits, and read config — a **local
 write surface** (since 0.2.0): write objects, stage an index, build trees, create
@@ -47,11 +47,11 @@ The wheel is tagged `cp311-abi3-<platform>` and works on CPython 3.11+.
 ## Quickstart
 
 ```python
-import pylibgrit
+import pygritlib
 
 # Discover the repository containing the given path (walks upward to find .git).
-repo = pylibgrit.Repository.discover(".")
-# Or open an explicit git dir:  pylibgrit.Repository.open("/path/to/.git")
+repo = pygritlib.Repository.discover(".")
+# Or open an explicit git dir:  pygritlib.Repository.open("/path/to/.git")
 
 # Resolve HEAD to an ObjectId, then read the commit it points at.
 head = repo.resolve("HEAD")          # ObjectId  (also resolves "main", "HEAD~2", hex, ...)
@@ -96,16 +96,16 @@ print(obj.kind, len(obj.data))       # obj.kind is an ObjectKind; obj.data is by
 
 ## Writing (local write-core)
 
-Since **0.2.0**, pylibgrit exposes a **local write surface** — enough to build commits
+Since **0.2.0**, pygritlib exposes a **local write surface** — enough to build commits
 and move refs entirely in-process. It mirrors git's plumbing (write object → stage index
 → write tree → create commit → update ref), and `create_commit`/`create_tag` produce
 **byte-identical object ids** to git.
 
 ```python
-import pylibgrit
-from pylibgrit import ObjectKind, Signature
+import pygritlib
+from pygritlib import ObjectKind, Signature
 
-repo = pylibgrit.Repository.open("/path/to/.git")     # or .discover(".")
+repo = pygritlib.Repository.open("/path/to/.git")     # or .discover(".")
 
 # 1. Write a blob straight to the object database (== git hash-object -w).
 blob = repo.odb.write(ObjectKind.BLOB, b"hello\n")
@@ -153,7 +153,7 @@ record injection, path traversal, and a grit-lib stack-overflow on malformed ind
 
 ## Networking (clone / fetch / ls-remote / push)
 
-Since **0.3.0**, pylibgrit exposes a **read-path networking surface** — clone from a
+Since **0.3.0**, pygritlib exposes a **read-path networking surface** — clone from a
 remote, fetch into an existing repository, or list a remote's refs without cloning —
 over **git://** and **https** (the `http-ureq` / rustls stack is bundled by default; no
 system OpenSSL or libcurl required). Since **0.4.0**, `repo.push` is also available over
@@ -164,7 +164,7 @@ not yet supported.
 
 ```python
 # Top-level function — no local repo needed.
-pylibgrit.ls_remote(
+pygritlib.ls_remote(
     url: str,
     *,
     username: str | None = None,
@@ -177,7 +177,7 @@ pylibgrit.ls_remote(
 # Class method — init + origin config + fetch + checkout (worktree clone).
 # Fetches ALL tags (tags="all"), like `git clone`.
 # Sets branch.<name>.remote/merge upstream tracking.
-pylibgrit.Repository.clone(
+pygritlib.Repository.clone(
     url: str,
     path: str | bytes | os.PathLike[str],
     *,
@@ -260,7 +260,7 @@ Credentials are resolved in this order of precedence:
 ### SSH transport
 
 Since **0.5.0**, `ls_remote`, `clone`, `fetch`, and `push` support **`ssh://`**,
-**`git+ssh://`**, and scp-style **`user@host:path`** URLs. pylibgrit spawns the system
+**`git+ssh://`**, and scp-style **`user@host:path`** URLs. pygritlib spawns the system
 `ssh` (no embedded SSH library). Authentication (keys, ssh-agent, `known_hosts`,
 `~/.ssh/config`) is entirely `ssh`'s job; put the user in the URL
 (`ssh://user@host/...`).
@@ -270,20 +270,20 @@ The `username=` / `password=` kwargs do **not** apply to ssh URLs and raise `Val
 The ssh program is configurable per call with `ssh_command=` — a shell command line run
 via `sh -c`, exactly like Git's `GIT_SSH_COMMAND`
 (e.g. `ssh_command="ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes"`). When omitted,
-pylibgrit follows Git's default precedence: `$GIT_SSH_COMMAND`, then `$GIT_SSH`, then
+pygritlib follows Git's default precedence: `$GIT_SSH_COMMAND`, then `$GIT_SSH`, then
 `ssh`. `ls_remote`, `clone`, `fetch`, and `push` all accept `ssh_command=`.
 
 ### Example
 
 ```python
-import pylibgrit
+import pygritlib
 
 # Clone a public repo over https (the http stack is bundled).
-repo = pylibgrit.Repository.clone("https://github.com/octocat/Hello-World.git", "/tmp/hello")
+repo = pygritlib.Repository.clone("https://github.com/octocat/Hello-World.git", "/tmp/hello")
 print(repo.head().peel().hex)
 
 # List a remote's branches without cloning.
-for ref in pylibgrit.ls_remote("https://github.com/octocat/Hello-World.git", heads=True):
+for ref in pygritlib.ls_remote("https://github.com/octocat/Hello-World.git", heads=True):
     print(ref.oid.hex, ref.name.decode())
 
 # Authenticated fetch (token via kwarg, or https://<token>@host/...).
@@ -353,9 +353,9 @@ fetch (where the callback never fires), push progress **does** fire.
 #### Push example
 
 ```python
-import pylibgrit
+import pygritlib
 
-repo = pylibgrit.Repository.open("/path/to/repo/.git", "/path/to/repo")
+repo = pygritlib.Repository.open("/path/to/repo/.git", "/path/to/repo")
 
 # Push local 'main' over https (token via kwarg or https://<token>@host/...).
 report = repo.push("https://github.com/me/repo.git", ["main"], username="x", password="TOKEN")
@@ -367,7 +367,7 @@ if not report.ok:
 # Force-with-lease (safe force) via a structured PushSpec:
 tip = repo.resolve("refs/heads/main")
 expected = repo.resolve("refs/remotes/origin/main")
-spec = pylibgrit.PushSpec(b"refs/heads/main", src=tip, expected_old=expected)
+spec = pygritlib.PushSpec(b"refs/heads/main", src=tip, expected_old=expected)
 repo.push("https://github.com/me/repo.git", [spec])
 
 # Delete a remote branch:
@@ -392,7 +392,7 @@ repo.push("https://github.com/me/repo.git", [":refs/heads/old-feature"])
 ## Byte / text policy
 
 Git data is binary: paths, ref names, author/committer fields, and messages are
-not guaranteed to be UTF-8. pylibgrit therefore returns git data as **`bytes`** by
+not guaranteed to be UTF-8. pygritlib therefore returns git data as **`bytes`** by
 default and offers **opt-in decoded accessors** so decoding is always your explicit
 choice:
 
@@ -406,7 +406,7 @@ choice:
 
 ## Exception hierarchy
 
-All pylibgrit errors derive from a single base so you can catch broadly or narrowly:
+All pygritlib errors derive from a single base so you can catch broadly or narrowly:
 
 ```
 GritError                 (base — also the catch-all for unmapped grit-lib errors)
@@ -473,11 +473,11 @@ This is honest about where grit-lib 0.4.1's API constrains byte-fidelity or beha
 
 ## Security considerations / untrusted repositories
 
-pylibgrit is a thin binding over grit-lib 0.4.1 and **inherits its behavior**. It is
+pygritlib is a thin binding over grit-lib 0.4.1 and **inherits its behavior**. It is
 intended for **trusted, local repositories** and is **not hardened against
 adversarial repository content**. The caveats below are upstream characteristics of
 grit-lib 0.4.1 that cannot be fixed in the binding layer; they are candidates for
-future hardening. Do not point pylibgrit at repositories you do not control without the
+future hardening. Do not point pygritlib at repositories you do not control without the
 external mitigations noted.
 
 - **No resource limits on object reads (DoS).** grit-lib decompresses loose objects
@@ -507,10 +507,10 @@ concurrent writes are unaffected.
 
 ## How it maps to grit-lib
 
-pylibgrit is a documented Python **façade** over grit-lib, not a literal 1:1
+pygritlib is a documented Python **façade** over grit-lib, not a literal 1:1
 re-export. grit-lib 0.4.1 exposes a free-function / data-struct style API (public
 fields, free functions taking `&Repository`/`&Odb`/`git_dir`, and `parse_*`
-functions over raw bytes); pylibgrit constructs the ergonomic Python classes
+functions over raw bytes); pygritlib constructs the ergonomic Python classes
 (`Repository`, typed object views, `Reference`, `Signature`) on top of those
 primitives. The complete, verified mapping — exact module paths, signatures,
 return/error types, and the error → exception table — lives in
@@ -518,11 +518,11 @@ return/error types, and the error → exception table — lives in
 
 ## Version compatibility
 
-pylibgrit pins grit-lib **exactly** (`=` pin) with a committed `Cargo.lock` and
+pygritlib pins grit-lib **exactly** (`=` pin) with a committed `Cargo.lock` and
 `--locked` builds for reproducibility (the published crate fully exposes read-core,
 so no git-revision fallback is used).
 
-| pylibgrit | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
+| pygritlib | grit-lib | pyo3 | Rust toolchain | Python (abi3) | License | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.4.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | + push over git:// and https |
 | 0.3.0 | `=0.4.1` (MIT) | `=0.23.3` | 1.94.1 | ≥ 3.11 | MIT | + read-path networking |
@@ -531,7 +531,7 @@ so no git-revision fallback is used).
 
 ## Releasing
 
-pylibgrit publishes to PyPI via [trusted publishing](https://docs.pypi.org/trusted-publishers/)
+pygritlib publishes to PyPI via [trusted publishing](https://docs.pypi.org/trusted-publishers/)
 (OpenID Connect) — no API tokens are stored in the repo. Publishing a GitHub Release
 runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which rebuilds
 the wheels + sdist with the same build recipe CI uses (released glibc Linux wheels
@@ -544,15 +544,15 @@ These cannot be automated and must be done once before the first release:
 
 1. **Register the PyPI "pending publisher"** at
    <https://pypi.org/manage/account/publishing/>:
-   - PyPI Project Name: `pylibgrit`
+   - PyPI Project Name: `pygritlib`
    - Owner: `linsomniac`
-   - Repository name: `pylibgrit`
+   - Repository name: `pygritlib`
    - Workflow name: `release.yml`
    - Environment name: `pypi`
 
    For the dry-run path, repeat at <https://test.pypi.org/manage/account/publishing/>
    with Environment name `testpypi`. A pending publisher does **not** reserve the
-   name, so cut the first real release promptly to claim `pylibgrit`.
+   name, so cut the first real release promptly to claim `pygritlib`.
 
 2. **Create the protected GitHub Environments** (Settings → Environments). GitHub
    silently auto-creates an *unprotected* environment if a workflow merely
@@ -566,7 +566,7 @@ These cannot be automated and must be done once before the first release:
 ### Cutting a release
 
 1. Bump the version in **both** `Cargo.toml` (`[package] version`) **and**
-   `Cargo.lock`: edit `Cargo.toml`, then run `cargo update -p pylibgrit` (or `cargo
+   `Cargo.lock`: edit `Cargo.toml`, then run `cargo update -p pygritlib` (or `cargo
    build` without `--locked`) so the lockfile matches. The workflow's `cargo
    metadata --locked` version guard fails if `Cargo.lock` is stale.
 2. Commit to `main` and push.

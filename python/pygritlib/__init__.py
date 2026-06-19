@@ -1,8 +1,8 @@
-"""pylibgrit — Python bindings for grit-lib."""
+"""pygritlib — Python bindings for grit-lib."""
 
 import enum
 
-from pylibgrit._pylibgrit import (
+from pygritlib._pygritlib import (
     AuthenticationError,
     Blob,
     Commit,

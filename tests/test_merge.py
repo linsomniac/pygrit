@@ -35,18 +35,18 @@ def _diamond(work, git_env):
 
 
 def test_merge_base_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, a, b, base = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
-    mb = repo.merge_base(pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b))
+    repo = pygritlib.Repository.open(str(work / ".git"))
+    mb = repo.merge_base(pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b))
     assert mb is not None
     assert mb.hex == base
     assert mb.hex == _git(work, git_env, "merge-base", a, b)
 
 
 def test_merge_base_unrelated_is_none(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -61,17 +61,17 @@ def test_merge_base_unrelated_is_none(tmp_path, git_env):
     _git(work, git_env, "add", "-A")
     _git(work, git_env, "commit", "-q", "-m", "two")
     two = _git(work, git_env, "rev-parse", "HEAD")
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     assert (
         repo.merge_base(
-            pylibgrit.ObjectId.from_hex(one), pylibgrit.ObjectId.from_hex(two)
+            pygritlib.ObjectId.from_hex(one), pygritlib.ObjectId.from_hex(two)
         )
         is None
     )
 
 
 def test_merge_trees_clean_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -94,11 +94,11 @@ def test_merge_trees_clean_matches_git(tmp_path, git_env):
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
     theirs_commit = _git(work, git_env, "rev-parse", "HEAD")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
     )
     assert res.has_conflicts is False
     assert res.conflicts == []
@@ -116,7 +116,7 @@ def test_merge_trees_clean_matches_git(tmp_path, git_env):
 
 
 def test_merge_trees_conflict_reports_paths(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -137,11 +137,11 @@ def test_merge_trees_conflict_reports_paths(tmp_path, git_env):
     _git(work, git_env, "commit", "-q", "-m", "B")
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
     )
     assert res.has_conflicts is True
     assert b"c.txt" in res.conflicts
@@ -149,12 +149,12 @@ def test_merge_trees_conflict_reports_paths(tmp_path, git_env):
     marker_oid = res.conflict_blob(b"c.txt")
     assert marker_oid is not None
     assert b"<<<<<<<" in repo.blob(marker_oid).data  # marker blob is written + readable
-    with pytest.raises(pylibgrit.RepositoryError):
+    with pytest.raises(pygritlib.RepositoryError):
         res.write_tree()
 
 
 def test_merge_trees_favor_ours(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -175,11 +175,11 @@ def test_merge_trees_favor_ours(tmp_path, git_env):
     _git(work, git_env, "commit", "-q", "-m", "B")
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
         favor="ours",
     )
     assert res.has_conflicts is False
@@ -190,7 +190,7 @@ def test_merge_trees_favor_ours(tmp_path, git_env):
 
 
 def test_merge_trees_favor_theirs(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -211,11 +211,11 @@ def test_merge_trees_favor_theirs(tmp_path, git_env):
     _git(work, git_env, "commit", "-q", "-m", "B")
     theirs_tree = _git(work, git_env, "rev-parse", "HEAD^{tree}")
 
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_trees(
-        pylibgrit.ObjectId.from_hex(base_tree),
-        pylibgrit.ObjectId.from_hex(ours_tree),
-        pylibgrit.ObjectId.from_hex(theirs_tree),
+        pygritlib.ObjectId.from_hex(base_tree),
+        pygritlib.ObjectId.from_hex(ours_tree),
+        pygritlib.ObjectId.from_hex(theirs_tree),
         favor="theirs",
     )
     assert res.has_conflicts is False
@@ -226,11 +226,11 @@ def test_merge_trees_favor_theirs(tmp_path, git_env):
 
 
 def test_merge_trees_bad_favor_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, *_ = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
-    head_tree = pylibgrit.ObjectId.from_hex(
+    repo = pygritlib.Repository.open(str(work / ".git"))
+    head_tree = pygritlib.ObjectId.from_hex(
         _git(work, git_env, "rev-parse", "HEAD^{tree}")
     )
     with pytest.raises(ValueError):
@@ -238,12 +238,12 @@ def test_merge_trees_bad_favor_raises(tmp_path, git_env):
 
 
 def test_merge_commits_clean_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, a, b, _base = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_commits(
-        pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b)
+        pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b)
     )
     assert res.has_conflicts is False
     got = res.write_tree().hex
@@ -259,7 +259,7 @@ def test_merge_commits_clean_matches_git(tmp_path, git_env):
 
 
 def test_merge_commits_conflict(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -278,16 +278,16 @@ def test_merge_commits_conflict(tmp_path, git_env):
     _git(work, git_env, "add", "-A")
     _git(work, git_env, "commit", "-q", "-m", "B")
     b = _git(work, git_env, "rev-parse", "HEAD")
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     res = repo.merge_commits(
-        pylibgrit.ObjectId.from_hex(a), pylibgrit.ObjectId.from_hex(b)
+        pygritlib.ObjectId.from_hex(a), pygritlib.ObjectId.from_hex(b)
     )
     assert res.has_conflicts is True
     assert b"c.txt" in res.conflicts
 
 
 def test_merge_commits_unrelated_uses_empty_base(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work = tmp_path / "r"
     subprocess.run(
@@ -302,23 +302,23 @@ def test_merge_commits_unrelated_uses_empty_base(tmp_path, git_env):
     _git(work, git_env, "add", "-A")
     _git(work, git_env, "commit", "-q", "-m", "two")
     two = _git(work, git_env, "rev-parse", "HEAD")
-    repo = pylibgrit.Repository.open(str(work / ".git"))
+    repo = pygritlib.Repository.open(str(work / ".git"))
     # No common ancestor -> empty-tree base -> additive merge of disjoint files, no conflict.
     res = repo.merge_commits(
-        pylibgrit.ObjectId.from_hex(one), pylibgrit.ObjectId.from_hex(two)
+        pygritlib.ObjectId.from_hex(one), pygritlib.ObjectId.from_hex(two)
     )
     assert res.has_conflicts is False
 
 
 def test_merge_commits_non_commit_oid_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     work, a, b, _base = _diamond(tmp_path / "r", git_env)
-    repo = pylibgrit.Repository.open(str(work / ".git"))
-    tree_oid = pylibgrit.ObjectId.from_hex(
+    repo = pygritlib.Repository.open(str(work / ".git"))
+    tree_oid = pygritlib.ObjectId.from_hex(
         _git(work, git_env, "rev-parse", "HEAD^{tree}")
     )
-    commit_oid = pylibgrit.ObjectId.from_hex(a)
+    commit_oid = pygritlib.ObjectId.from_hex(a)
     # Passing a tree oid where a commit is expected must raise (not silently misparse).
-    with pytest.raises(pylibgrit.GritError):
+    with pytest.raises(pygritlib.GritError):
         repo.merge_commits(tree_oid, commit_oid)

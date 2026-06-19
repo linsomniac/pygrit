@@ -48,7 +48,7 @@ impl ReferenceData {
 }
 
 /// A single Git reference: a name plus either a direct oid or a symbolic target.
-#[pyclass(frozen, module = "pylibgrit._pylibgrit")]
+#[pyclass(frozen, module = "pygritlib._pygritlib")]
 pub struct Reference {
     repo: Arc<grit_lib::repo::Repository>, // so peel() can resolve symbolic refs
     data: ReferenceData,
@@ -357,7 +357,7 @@ pub(crate) fn atomic_cas_delete(
 }
 
 /// Iterator over a repository's references; owns its own `Arc`s so it outlives the parent.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct ReferenceIter {
     repo: Arc<grit_lib::repo::Repository>,
     entries: Arc<[ReferenceData]>,

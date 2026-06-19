@@ -1,14 +1,14 @@
-# pylibgrit Phase C — Networking & Clone (read-path) Implementation Plan
+# pygritlib Phase C — Networking & Clone (read-path) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `ls_remote`, `fetch`, and `clone` over git:// and https to pylibgrit, assembled from grit-lib 0.4.1 networking plumbing (no clone porcelain upstream).
+**Goal:** Add `ls_remote`, `fetch`, and `clone` over git:// and https to pygritlib, assembled from grit-lib 0.4.1 networking plumbing (no clone porcelain upstream).
 
 **Architecture:** A thin Rust transport layer dispatches by URL scheme. git:// uses `GitDaemonTransport` + `fetch_remote` (the binding applies the returned ref updates); https uses a bundled `UreqHttpClient` + `http_fetch` (self-applies). `ls_remote` reads the v0/v1 ref advertisement off a `Connection`. `clone` = init + write `origin` config + fetch + create local branch/HEAD + checkout. Credentials are an in-Rust `CredentialProvider` (explicit/userinfo creds chained to grit's git-credential-helper provider). Progress is an optional `bytes` callback bridged to grit's `fetch::Progress`.
 
 **Tech Stack:** Rust + PyO3 0.23 (abi3), grit-lib 0.4.1 with the `http-ureq` feature, maturin, pytest with a hermetic `git daemon` fixture (git://) and a `git http-backend` fixture (https).
 
-**Spec:** `docs/superpowers/specs/2026-06-17-pylibgrit-networking-clone-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-17-pygritlib-networking-clone-design.md`
 
 ## Build & gates (run after every code change)
 
@@ -16,14 +16,14 @@
 uv run maturin develop --uv --locked          # rebuild the extension (compiles http-ureq in)
 uv run pytest -q                              # tests
 uv run mypy python tests                      # type-check
-uv run python -m mypy.stubtest pylibgrit      # stub matches runtime (NO allowlist)
+uv run python -m mypy.stubtest pygritlib      # stub matches runtime (NO allowlist)
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check
 uv run ruff check
 ```
 
-If `uv run` reinstalls a stale cached build, force a rebuild: `uv pip install -e . --reinstall-package pylibgrit`.
+If `uv run` reinstalls a stale cached build, force a rebuild: `uv pip install -e . --reinstall-package pygritlib`.
 
 **Imports note:** `cargo clippy -- -D warnings` denies unused imports and dead code. Each task's code blocks list exactly the symbols that task uses; when a later task first uses another symbol from a module already imported (e.g. `crate::error::network_err`, first used by `clone_impl` in Task 5), widen that task's `use` line accordingly. Do not pre-import symbols a task does not yet use.
 
@@ -39,8 +39,8 @@ If `uv run` reinstalls a stale cached build, force a rebuild: `uv pip install -e
 | `src/remote.rs` (new) | `RemoteRef`/`RefUpdate`/`FetchReport` pyclasses; `ls_remote` pyfunction; `fetch_raw`/`fetch_method`/`clone_impl`; `UpdateMode`→str |
 | `src/repository.rs` (modify) | `Repository.clone` staticmethod + `Repository.fetch` method (thin delegators) |
 | `src/lib.rs` (modify) | `mod` new modules; register classes + `ls_remote` function |
-| `python/pylibgrit/__init__.py` (modify) | export new symbols |
-| `python/pylibgrit/__init__.pyi` (modify) | stubs for new symbols |
+| `python/pygritlib/__init__.py` (modify) | export new symbols |
+| `python/pygritlib/__init__.pyi` (modify) | stubs for new symbols |
 | `tests/conftest.py` (modify) | `git_daemon` fixture + free-port/wait helpers; `seeded_source` helper |
 | `tests/githttp.py` (new) | `git http-backend` HTTP server (anonymous + Basic-auth) for https tests |
 | `tests/test_*.py` (new) | ls_remote / fetch / clone / https / credentials tests |
@@ -52,8 +52,8 @@ If `uv run` reinstalls a stale cached build, force a rebuild: `uv pip install -e
 **Files:**
 - Modify: `Cargo.toml:16-20`
 - Modify: `src/error.rs`
-- Modify: `python/pylibgrit/__init__.py`
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.py`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_net_errors.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -63,26 +63,26 @@ Create `tests/test_net_errors.py`:
 ```python
 """The two networking exception types exist and subclass GritError."""
 
-import pylibgrit
+import pygritlib
 
 
 def test_network_error_is_griterror_subclass() -> None:
-    assert issubclass(pylibgrit.NetworkError, pylibgrit.GritError)
+    assert issubclass(pygritlib.NetworkError, pygritlib.GritError)
 
 
 def test_authentication_error_is_griterror_subclass() -> None:
-    assert issubclass(pylibgrit.AuthenticationError, pylibgrit.GritError)
+    assert issubclass(pygritlib.AuthenticationError, pygritlib.GritError)
 
 
 def test_exceptions_are_distinct() -> None:
-    assert pylibgrit.NetworkError is not pylibgrit.AuthenticationError
-    assert not issubclass(pylibgrit.NetworkError, pylibgrit.AuthenticationError)
+    assert pygritlib.NetworkError is not pygritlib.AuthenticationError
+    assert not issubclass(pygritlib.NetworkError, pygritlib.AuthenticationError)
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_net_errors.py -q`
-Expected: FAIL with `AttributeError: module 'pylibgrit' has no attribute 'NetworkError'`.
+Expected: FAIL with `AttributeError: module 'pygritlib' has no attribute 'NetworkError'`.
 
 - [ ] **Step 3: Enable the http-ureq feature**
 
@@ -98,13 +98,13 @@ In `src/error.rs`, after the `RefMismatchError` `create_exception!` block (line 
 
 ```rust
 create_exception!(
-    _pylibgrit,
+    _pygritlib,
     NetworkError,
     GritError,
     "A transport, protocol, or transfer failure while talking to a remote."
 );
 create_exception!(
-    _pylibgrit,
+    _pygritlib,
     AuthenticationError,
     GritError,
     "The remote rejected the supplied (or absent) credentials."
@@ -159,9 +159,9 @@ In `register`, add the two new types (after the `RefMismatchError` line):
 
 - [ ] **Step 5: Export from Python**
 
-In `python/pylibgrit/__init__.py`, add `AuthenticationError,` and `NetworkError,` to BOTH the `from pylibgrit._pylibgrit import (...)` block and `__all__` (keep alphabetical order — `AuthenticationError` after `import enum`/before `Blob`; `NetworkError` after `MergeResult`).
+In `python/pygritlib/__init__.py`, add `AuthenticationError,` and `NetworkError,` to BOTH the `from pygritlib._pygritlib import (...)` block and `__all__` (keep alphabetical order — `AuthenticationError` after `import enum`/before `Blob`; `NetworkError` after `MergeResult`).
 
-In `python/pylibgrit/__init__.pyi`, add to `__all__` (same positions) and add the stub classes after `RefMismatchError` (line 56):
+In `python/pygritlib/__init__.pyi`, add to `__all__` (same positions) and add the stub classes after `RefMismatchError` (line 56):
 
 ```python
 class NetworkError(GritError):
@@ -177,7 +177,7 @@ Run:
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_net_errors.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 ```
@@ -186,7 +186,7 @@ Expected: test PASSES; all gates green. (The first build now compiles `ureq`+`ru
 - [ ] **Step 7: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock src/error.rs python/pylibgrit/__init__.py python/pylibgrit/__init__.pyi tests/test_net_errors.py
+git add Cargo.toml Cargo.lock src/error.rs python/pygritlib/__init__.py python/pygritlib/__init__.pyi tests/test_net_errors.py
 git commit -m "feat: bundle http-ureq; add NetworkError + AuthenticationError"
 ```
 
@@ -337,7 +337,7 @@ git commit -m "test: hermetic git daemon fixture (git://)"
 - Create: `src/net_transport.rs`
 - Create: `src/remote.rs`
 - Modify: `src/lib.rs`
-- Modify: `python/pylibgrit/__init__.py`, `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.py`, `python/pygritlib/__init__.pyi`
 - Test: `tests/test_ls_remote.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -351,7 +351,7 @@ from __future__ import annotations
 
 import pytest
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -369,7 +369,7 @@ def _oracle_refs(repo_dir, url) -> dict[str, str]:
 
 def test_ls_remote_matches_oracle(git_daemon, tmp_path) -> None:
     oracle = _oracle_refs(tmp_path, git_daemon.repo_url)
-    got = {r.name.decode(): r.oid.hex for r in pylibgrit.ls_remote(git_daemon.repo_url)}
+    got = {r.name.decode(): r.oid.hex for r in pygritlib.ls_remote(git_daemon.repo_url)}
     # Both must agree on the real refs (HEAD + refs/heads/main + refs/tags/v1).
     assert got["refs/heads/main"] == oracle["refs/heads/main"]
     assert got["refs/tags/v1"] == oracle["refs/tags/v1"]
@@ -377,29 +377,29 @@ def test_ls_remote_matches_oracle(git_daemon, tmp_path) -> None:
 
 
 def test_ls_remote_head_symref(git_daemon) -> None:
-    head = next(r for r in pylibgrit.ls_remote(git_daemon.repo_url) if r.name == b"HEAD")
+    head = next(r for r in pygritlib.ls_remote(git_daemon.repo_url) if r.name == b"HEAD")
     assert head.symref_target == b"refs/heads/main"
 
 
 def test_ls_remote_heads_filter(git_daemon) -> None:
-    names = {r.name for r in pylibgrit.ls_remote(git_daemon.repo_url, heads=True)}
+    names = {r.name for r in pygritlib.ls_remote(git_daemon.repo_url, heads=True)}
     assert names == {b"refs/heads/main"}
 
 
 def test_ls_remote_tags_filter(git_daemon) -> None:
-    names = {r.name for r in pylibgrit.ls_remote(git_daemon.repo_url, tags=True)}
+    names = {r.name for r in pygritlib.ls_remote(git_daemon.repo_url, tags=True)}
     assert names == {b"refs/tags/v1"}
 
 
 def test_ls_remote_unsupported_scheme_raises() -> None:
-    with pytest.raises(pylibgrit.NetworkError):
-        pylibgrit.ls_remote("ssh://example.com/repo.git")
+    with pytest.raises(pygritlib.NetworkError):
+        pygritlib.ls_remote("ssh://example.com/repo.git")
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_ls_remote.py -q`
-Expected: FAIL with `AttributeError: module 'pylibgrit' has no attribute 'ls_remote'`.
+Expected: FAIL with `AttributeError: module 'pygritlib' has no attribute 'ls_remote'`.
 
 - [ ] **Step 3: Create the transport scaffolding**
 
@@ -468,7 +468,7 @@ use crate::net_transport::{classify, git_connect, Scheme};
 // AIDEV-NOTE: One advertised remote ref. `name`/`symref_target` are bytes (house style: ref names
 // are bytes everywhere in the binding); `oid` is an ObjectId. HEAD is synthesized from the
 // connection's head_symref + the symref target's advertised oid (advertised_refs excludes HEAD).
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct RemoteRef {
     name: Vec<u8>,
     oid: grit_lib::objects::ObjectId,
@@ -604,7 +604,7 @@ mod net_transport;
 mod remote;
 ```
 
-In the `_pylibgrit` function, register the class and the free function (after the `MergeResult` class registration):
+In the `_pygritlib` function, register the class and the free function (after the `MergeResult` class registration):
 
 ```rust
     m.add_class::<remote::RemoteRef>()?;
@@ -613,9 +613,9 @@ In the `_pylibgrit` function, register the class and the free function (after th
 
 - [ ] **Step 6: Export from Python**
 
-In `python/pylibgrit/__init__.py`: add `RemoteRef,` to the import block and `__all__`, and add `ls_remote,` to the import block and `__all__` (alphabetical: `RemoteRef` near the R's; `ls_remote` sorts after the capitalized names — append it and keep the list sorted case-insensitively, i.e. place `"ls_remote"` after `"InvalidObjectError"`/before `"MergeResult"` is wrong case-insensitively; put it where your sorter agrees with ruff — run `uv run ruff check` and follow its ordering).
+In `python/pygritlib/__init__.py`: add `RemoteRef,` to the import block and `__all__`, and add `ls_remote,` to the import block and `__all__` (alphabetical: `RemoteRef` near the R's; `ls_remote` sorts after the capitalized names — append it and keep the list sorted case-insensitively, i.e. place `"ls_remote"` after `"InvalidObjectError"`/before `"MergeResult"` is wrong case-insensitively; put it where your sorter agrees with ruff — run `uv run ruff check` and follow its ordering).
 
-In `python/pylibgrit/__init__.pyi`: add `RemoteRef` and `ls_remote` to `__all__`; add the class stub (after the exception stubs / near the value types):
+In `python/pygritlib/__init__.pyi`: add `RemoteRef` and `ls_remote` to `__all__`; add the class stub (after the exception stubs / near the value types):
 
 ```python
 @final
@@ -648,7 +648,7 @@ Run:
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_ls_remote.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 ```
@@ -657,7 +657,7 @@ Expected: tests PASS (or SKIP without `git daemon`); gates green.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/net_transport.rs src/remote.rs src/net_credentials.rs src/lib.rs python/pylibgrit/ tests/test_ls_remote.py
+git add src/net_transport.rs src/remote.rs src/net_credentials.rs src/lib.rs python/pygritlib/ tests/test_ls_remote.py
 git commit -m "feat: ls_remote over git:// (advertisement-based) + RemoteRef"
 ```
 
@@ -669,7 +669,7 @@ git commit -m "feat: ls_remote over git:// (advertisement-based) + RemoteRef"
 - Modify: `src/remote.rs`
 - Create: `src/net_progress.rs`
 - Modify: `src/repository.rs`, `src/lib.rs`
-- Modify: `python/pylibgrit/__init__.py`, `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.py`, `python/pygritlib/__init__.pyi`
 - Test: `tests/test_fetch.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -681,16 +681,16 @@ Create `tests/test_fetch.py`:
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 
 
 def test_fetch_writes_tracking_refs_and_objects(git_daemon, tmp_path) -> None:
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(dst)
+    repo = pygritlib.Repository.init(dst)
     report = repo.fetch(git_daemon.repo_url)
 
     # The remote main tip is now an object in our odb under refs/remotes/origin/main.
-    head = pylibgrit.ObjectId.from_hex(git_daemon.head_oid)
+    head = pygritlib.ObjectId.from_hex(git_daemon.head_oid)
     assert repo.odb.exists(head)
     track = repo.resolve("refs/remotes/origin/main")
     assert track.hex == git_daemon.head_oid
@@ -702,7 +702,7 @@ def test_fetch_writes_tracking_refs_and_objects(git_daemon, tmp_path) -> None:
 
 def test_fetch_idempotent_second_is_not_new(git_daemon, tmp_path) -> None:
     dst = tmp_path / "dst"
-    repo = pylibgrit.Repository.init(dst)
+    repo = pygritlib.Repository.init(dst)
     repo.fetch(git_daemon.repo_url)
     report = repo.fetch(git_daemon.repo_url)
     modes = {u.remote_ref: u.mode for u in report.updates}
@@ -799,7 +799,7 @@ Append to `src/remote.rs` (add `use` lines at the top: `use grit_lib::transfer::
 ```rust
 // AIDEV-NOTE: One applied ref update from a fetch. Ref names are bytes; oids are ObjectId; `mode` is
 // the lower-kebab `UpdateMode` name; `note` is grit's human-readable annotation.
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct RefUpdate {
     remote_ref: Vec<u8>,
     local_ref: Option<Vec<u8>>,
@@ -839,7 +839,7 @@ impl RefUpdate {
 
 // AIDEV-NOTE: The result of a fetch: the applied ref updates + the remote's default branch (HEAD
 // symref). Shallow fields are intentionally omitted (shallow deferred).
-#[pyclass(module = "pylibgrit._pylibgrit")]
+#[pyclass(module = "pygritlib._pygritlib")]
 pub struct FetchReport {
     updates: Vec<Py<RefUpdate>>,
     default_branch: Option<Vec<u8>>,
@@ -1079,9 +1079,9 @@ In `src/lib.rs`, add `mod net_progress;` (with the other `mod` lines) and regist
 
 - [ ] **Step 7: Export + stub**
 
-In `python/pylibgrit/__init__.py`: add `FetchReport,` and `RefUpdate,` to the import block and `__all__`.
+In `python/pygritlib/__init__.py`: add `FetchReport,` and `RefUpdate,` to the import block and `__all__`.
 
-In `python/pylibgrit/__init__.pyi`: add both to `__all__`, add the stubs near `RemoteRef`:
+In `python/pygritlib/__init__.pyi`: add both to `__all__`, add the stubs near `RemoteRef`:
 
 ```python
 @final
@@ -1129,10 +1129,10 @@ and add `Callable` to the typing import (`from typing import Callable, Iterator,
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_fetch.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
-git add src/ python/pylibgrit/ tests/test_fetch.py
+git add src/ python/pygritlib/ tests/test_fetch.py
 git commit -m "feat: repo.fetch over git:// (+ FetchReport/RefUpdate, progress bridge)"
 ```
 
@@ -1142,7 +1142,7 @@ git commit -m "feat: repo.fetch over git:// (+ FetchReport/RefUpdate, progress b
 
 **Files:**
 - Modify: `src/remote.rs`, `src/repository.rs`
-- Modify: `python/pylibgrit/__init__.pyi`
+- Modify: `python/pygritlib/__init__.pyi`
 - Test: `tests/test_clone.py` (create)
 
 - [ ] **Step 1: Write the failing test**
@@ -1156,7 +1156,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pylibgrit
+import pygritlib
 from tests.gitlib import run_git
 
 
@@ -1173,7 +1173,7 @@ def _all_refs(repo_dir: Path) -> dict[str, str]:
 def test_clone_matches_git_clone(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
     theirs = tmp_path / "theirs"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     run_git(tmp_path, "clone", "-q", git_daemon.repo_url, str(theirs))
 
     # Same HEAD commit, same working files.
@@ -1188,7 +1188,7 @@ def test_clone_matches_git_clone(git_daemon, tmp_path) -> None:
 
 def test_clone_writes_origin_config(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
-    pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    pygritlib.Repository.clone(git_daemon.repo_url, ours)
     url = run_git(ours, "config", "remote.origin.url").decode().strip()
     fetch = run_git(ours, "config", "remote.origin.fetch").decode().strip()
     assert url == git_daemon.repo_url
@@ -1197,7 +1197,7 @@ def test_clone_writes_origin_config(git_daemon, tmp_path) -> None:
 
 def test_clone_head_is_on_branch(git_daemon, tmp_path) -> None:
     ours = tmp_path / "ours"
-    repo = pylibgrit.Repository.clone(git_daemon.repo_url, ours)
+    repo = pygritlib.Repository.clone(git_daemon.repo_url, ours)
     head = repo.head()
     assert head.is_symbolic
     assert head.symbolic_target == b"refs/heads/main"
@@ -1341,7 +1341,7 @@ In `src/repository.rs`, inside `#[pymethods] impl Repository`, after `init` (lin
 
 - [ ] **Step 5: Add the `clone` stub**
 
-In `python/pylibgrit/__init__.pyi`, inside `class Repository`, after the `open` staticmethod (line 298), add:
+In `python/pygritlib/__init__.pyi`, inside `class Repository`, after the `open` staticmethod (line 298), add:
 
 ```python
     @staticmethod
@@ -1362,10 +1362,10 @@ In `python/pylibgrit/__init__.pyi`, inside `class Repository`, after the `open` 
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_clone.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
-git add src/ python/pylibgrit/ tests/test_clone.py
+git add src/ python/pygritlib/ tests/test_clone.py
 git commit -m "feat: Repository.clone over git:// (origin config + checkout)"
 ```
 
@@ -1389,12 +1389,12 @@ from __future__ import annotations
 
 import pytest
 
-import pylibgrit
+import pygritlib
 
 
 def test_progress_callback_receives_bytes_and_clone_succeeds(git_daemon, tmp_path) -> None:
     chunks: list[bytes] = []
-    repo = pylibgrit.Repository.clone(
+    repo = pygritlib.Repository.clone(
         git_daemon.repo_url, tmp_path / "ours", progress=chunks.append
     )
     # Clone still works with a callback attached...
@@ -1414,7 +1414,7 @@ def test_progress_callback_exception_propagates(git_daemon, tmp_path) -> None:
     # our exception. If it emits none, the fetch succeeds — both are acceptable; assert we never get
     # a DIFFERENT error type.
     try:
-        pylibgrit.Repository.clone(git_daemon.repo_url, tmp_path / "ours", progress=cb)
+        pygritlib.Repository.clone(git_daemon.repo_url, tmp_path / "ours", progress=cb)
     except Boom:
         pass
 ```
@@ -1451,22 +1451,22 @@ Create `tests/test_http_clone.py`:
 
 from __future__ import annotations
 
-import pylibgrit
+import pygritlib
 
 
 def test_http_ls_remote(http_server) -> None:
-    refs = {r.name for r in pylibgrit.ls_remote(http_server.repo_url)}
+    refs = {r.name for r in pygritlib.ls_remote(http_server.repo_url)}
     assert b"refs/heads/main" in refs
 
 
 def test_http_clone(http_server, tmp_path) -> None:
-    repo = pylibgrit.Repository.clone(http_server.repo_url, tmp_path / "ours")
+    repo = pygritlib.Repository.clone(http_server.repo_url, tmp_path / "ours")
     assert repo.resolve("HEAD").hex == http_server.head_oid
     assert (tmp_path / "ours" / "a.txt").read_text() == "hello\n"
 
 
 def test_http_fetch(http_server, tmp_path) -> None:
-    repo = pylibgrit.Repository.init(tmp_path / "dst")
+    repo = pygritlib.Repository.init(tmp_path / "dst")
     report = repo.fetch(http_server.repo_url)
     assert {u.remote_ref for u in report.updates} >= {b"refs/heads/main"}
     assert repo.resolve("refs/remotes/origin/main").hex == http_server.head_oid
@@ -1770,7 +1770,7 @@ def http_server(tmp_path: Path, git_env: dict[str, str]):
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_http_clone.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 git add src/net_credentials.rs tests/githttp.py tests/conftest.py tests/test_http_clone.py
@@ -1798,13 +1798,13 @@ from __future__ import annotations
 
 import pytest
 
-import pylibgrit
+import pygritlib
 
 USER, PW = "alice", "s3cret"
 
 
 def test_auth_clone_with_kwargs(http_auth_server, tmp_path) -> None:
-    repo = pylibgrit.Repository.clone(
+    repo = pygritlib.Repository.clone(
         http_auth_server.repo_url, tmp_path / "ours",
         username=USER, password=PW, use_credential_helpers=False,
     )
@@ -1813,20 +1813,20 @@ def test_auth_clone_with_kwargs(http_auth_server, tmp_path) -> None:
 
 def test_auth_clone_with_url_userinfo(http_auth_server, tmp_path) -> None:
     url = http_auth_server.repo_url.replace("http://", f"http://{USER}:{PW}@")
-    repo = pylibgrit.Repository.clone(url, tmp_path / "ours", use_credential_helpers=False)
+    repo = pygritlib.Repository.clone(url, tmp_path / "ours", use_credential_helpers=False)
     assert repo.resolve("HEAD").hex == http_auth_server.head_oid
 
 
 def test_auth_missing_credentials_raises(http_auth_server, tmp_path) -> None:
-    with pytest.raises(pylibgrit.AuthenticationError):
-        pylibgrit.Repository.clone(
+    with pytest.raises(pygritlib.AuthenticationError):
+        pygritlib.Repository.clone(
             http_auth_server.repo_url, tmp_path / "ours", use_credential_helpers=False
         )
 
 
 def test_auth_wrong_credentials_raises(http_auth_server) -> None:
-    with pytest.raises(pylibgrit.AuthenticationError):
-        pylibgrit.ls_remote(
+    with pytest.raises(pygritlib.AuthenticationError):
+        pygritlib.ls_remote(
             http_auth_server.repo_url, username=USER, password="wrong",
             use_credential_helpers=False,
         )
@@ -1860,7 +1860,7 @@ def http_auth_server(tmp_path: Path, git_env: dict[str, str]):
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest tests/test_http_auth.py -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 git add tests/conftest.py tests/test_http_auth.py
@@ -1880,7 +1880,7 @@ git commit -m "test: https Basic-auth (kwargs, userinfo, AuthenticationError)"
 - [ ] **Step 1: Add a "Networking" section to README.md**
 
 After the existing "Writing" section, add a "Networking (clone / fetch / ls-remote)" section documenting:
-- `pylibgrit.ls_remote(url, *, username=, password=, use_credential_helpers=, heads=, tags=)` → `list[RemoteRef]`.
+- `pygritlib.ls_remote(url, *, username=, password=, use_credential_helpers=, heads=, tags=)` → `list[RemoteRef]`.
 - `Repository.clone(url, path, *, branch=, username=, password=, use_credential_helpers=, progress=)`.
 - `repo.fetch(url, refspecs=None, *, tags=, prune=, username=, password=, use_credential_helpers=, progress=)` → `FetchReport`.
 - Supported schemes (git://, https; ssh/shallow/push not yet); https bundled (rustls).
@@ -1888,14 +1888,14 @@ After the existing "Writing" section, add a "Networking (clone / fetch / ls-remo
 
 ````markdown
 ```python
-import pylibgrit
+import pygritlib
 
 # Clone a public repo over https.
-repo = pylibgrit.Repository.clone("https://github.com/octocat/Hello-World.git", "/tmp/hello")
+repo = pygritlib.Repository.clone("https://github.com/octocat/Hello-World.git", "/tmp/hello")
 print(repo.head().peel().hex)
 
 # List remote refs without cloning.
-for ref in pylibgrit.ls_remote("https://github.com/octocat/Hello-World.git", heads=True):
+for ref in pygritlib.ls_remote("https://github.com/octocat/Hello-World.git", heads=True):
     print(ref.oid.hex, ref.name.decode())
 
 # Authenticated fetch (token via kwarg or https://<token>@host/...).
@@ -1914,16 +1914,16 @@ Add a `## 0.3.0` section above `## 0.2.0` summarizing: read-path networking (ls_
 In `Cargo.toml`, change `version = "0.2.0"` to `version = "0.3.0"`. Then refresh the lock:
 
 ```bash
-cargo update -p pylibgrit --precise 0.3.0 2>/dev/null || cargo build
+cargo update -p pygritlib --precise 0.3.0 2>/dev/null || cargo build
 ```
-(Or simply run `uv run maturin develop --uv --locked` which updates `Cargo.lock`'s pylibgrit version.)
+(Or simply run `uv run maturin develop --uv --locked` which updates `Cargo.lock`'s pygritlib version.)
 
 - [ ] **Step 4: Full suite + all gates**
 
 ```bash
 uv run maturin develop --uv --locked
 uv run pytest -q
-uv run mypy python tests && uv run python -m mypy.stubtest pylibgrit
+uv run mypy python tests && uv run python -m mypy.stubtest pygritlib
 cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings
 uv run ruff format --check && uv run ruff check
 ```

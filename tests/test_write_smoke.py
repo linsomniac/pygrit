@@ -2,21 +2,21 @@ import subprocess
 
 
 def test_build_a_commit_end_to_end(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     subprocess.run(
         ["git", "init", "-q", "-b", "main", str(repo)], env=git_env, check=True
     )
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
 
-    blob = pg.odb.write(pylibgrit.ObjectKind.BLOB, b"hello\n")
+    blob = pg.odb.write(pygritlib.ObjectKind.BLOB, b"hello\n")
     idx = pg.index()
     idx.add(b"greeting.txt", blob, 0o100644)
     idx.write()
     tree = idx.write_tree()
-    sig = pylibgrit.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
+    sig = pygritlib.Signature(b"Ada", b"ada@x.io", (1718000000, 0))
     commit = pg.create_commit(
         tree, parents=[], author=sig, committer=sig, message=b"init\n"
     )

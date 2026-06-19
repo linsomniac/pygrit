@@ -27,18 +27,18 @@ def _one_commit(repo, env):
 
 
 def test_create_tag_matches_git(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     head = _one_commit(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    target = pylibgrit.ObjectId.from_hex(head)
-    tagger = pylibgrit.Signature(b"Tagger", b"tag@example.com", (1112911993, 0))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    target = pygritlib.ObjectId.from_hex(head)
+    tagger = pygritlib.Signature(b"Tagger", b"tag@example.com", (1112911993, 0))
     tag = pg.create_tag(
         target,
-        pylibgrit.ObjectKind.COMMIT,
+        pygritlib.ObjectKind.COMMIT,
         b"v1",
         message=b"release one\n",
         tagger=tagger,
@@ -77,19 +77,19 @@ def test_create_tag_matches_git(tmp_path, git_env):
 
 
 def test_create_tag_non_utf8_message_raises(tmp_path, git_env):
-    import pylibgrit
+    import pygritlib
 
     repo = tmp_path / "r"
     repo.mkdir()
     _init(repo, git_env)
     head = _one_commit(repo, git_env)
-    pg = pylibgrit.Repository.open(str(repo / ".git"))
-    target = pylibgrit.ObjectId.from_hex(head)
-    tagger = pylibgrit.Signature(b"T", b"t@x", (1, 0))
+    pg = pygritlib.Repository.open(str(repo / ".git"))
+    target = pygritlib.ObjectId.from_hex(head)
+    tagger = pygritlib.Signature(b"T", b"t@x", (1, 0))
     with pytest.raises(ValueError):
         pg.create_tag(
             target,
-            pylibgrit.ObjectKind.COMMIT,
+            pygritlib.ObjectKind.COMMIT,
             b"v2",
             message=b"\xff\xfe",
             tagger=tagger,
